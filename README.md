@@ -21,6 +21,8 @@
 - 菜单栏：插拔及充电状态变化通过系统电源通知刷新；普通功率读数保留自选刷新间隔。
 - 上限滑条：拖动显示目标数值，松开才提交；蓝色表示当前电量，白色滑块表示上限，竖向虚线表示航海下界。充电高光、分流光带支持减少动态效果。
 - App 用量：默认显示所有普通运行应用，包括空闲应用；可切仅高能耗，并可选择后台进程。按名称固定排序，鼠标停留/退出确认时固定名单位置；用量数字仍可更新。悬停时读数向左让位、展开退出按钮，平时右对齐；右键菜单也可退出。超过窗口高度可滚动查看。
+- 功率分流：共同干流连续分叉，支持充电、保持、电池及混合供电。macOS26+可点击电脑展开/收起硬件分项；低于1W的细流隐藏但保留详情。仪表板提供功率总览和整图折叠。
+- 通知：正向总开关控制全部提醒，子开关单独控制充电状态提醒；系统通知权限独立。
 - 电量/功耗曲线：可按实际时间或跳过记录空档，悬停读取真实采样时间；可开关刻度。功率平均支持当前或过去 5/15/30 分钟。
 - 菜单项目配置：主电池与读数共用排序；在设置内自由拖动原卡片，不生成另一份拖动预览。主图标样式和选项可折叠，读数目录保留。
 - 材质：macOS 26+ 的液态玻璃使用 NSGlassEffectView 与 glassEffect；旧系统回退毛玻璃。材质和日夜外观分别选择，跟随窗口与菜单面板。
@@ -30,13 +32,14 @@
 
 ## 构建与验证
 
-要求 Xcode 或 Command Line Tools、Swift 6，以及 Apple Silicon Mac。依赖源码已放在 Vendor 中。
+要求带 macOS 26 或更新 SDK 的 Xcode / Command Line Tools、Swift 6，以及 Apple Silicon Mac。运行目标仍为 macOS 14+。依赖源码已放在 Vendor 中。
 
 ```sh
 zsh BuildSupport/build_app.sh
 # 只读预览；不会开启硬件充电管理
 open -n Dist/Aidente.app --args --ui-preview --preview-window
 
+zsh BuildSupport/test_power_stream.sh
 zsh BuildSupport/test_menu_item_ordering.sh
 zsh BuildSupport/test_status_events.sh
 zsh BuildSupport/test_completion.sh

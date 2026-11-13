@@ -19,6 +19,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--render-power-flow=") }) {
+            do { try PowerFlowPreview.render(to:String(argument.dropFirst("--render-power-flow=".count)));Darwin.exit(0) }
+            catch { fputs("FLOW_PREVIEW_FAILED: \(error)\n",stderr);Darwin.exit(1) }
+        }
         if let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--render-status-icons=") }) {
             do {
                 try StatusIconPreview.render(to: String(argument.dropFirst("--render-status-icons=".count)))

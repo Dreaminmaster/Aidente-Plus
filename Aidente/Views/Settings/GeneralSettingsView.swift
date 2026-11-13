@@ -115,29 +115,35 @@ struct GeneralSettingsView: View {
             }
 
             AidenteCard(
-                "通知",
-                subtitle: "控制 Aidente 何时向你报告充电状态。",
+                AidenteL10n.t("通知设置", "Notification Settings"),
+                subtitle: AidenteL10n.t("先开启总开关，再选择需要的通知。", "Enable notifications, then choose which events to receive."),
                 icon: "bell.badge.fill",
                 colors: AidenteTheme.automationColors
             ) {
                 AidenteSettingToggle(
-                    "关闭全部通知",
-                    icon: "bell.slash.fill",
-                    colors: [AidenteTheme.coral, AidenteTheme.amber],
-                    isOn: $disableNotifications
+                    AidenteL10n.t("允许 Aidente 通知", "Allow Aidente Notifications"),
+                    subtitle: AidenteL10n.t("总开关：关闭后，充电状态和任务通知均不发送。", "Master switch: off silences both charging and workflow notifications."),
+                    icon: "bell.fill",
+                    colors: [],
+                    isOn: Binding(get: { !disableNotifications }, set: { disableNotifications = !$0 })
                 )
 
+                Text(AidenteL10n.t(disableNotifications ? "全部通知已暂停。":"通知已开启；可在下方单独关闭充电状态提醒。",disableNotifications ? "All notifications are paused.":"Notifications are on; charging reminders can be disabled below."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
                 AidenteRowDivider()
 
                 AidenteSettingToggle(
-                    "充电状态变化时通知",
-                    subtitle: "暂停或恢复充电时发送系统通知",
+                    AidenteL10n.t("充电状态通知", "Charging Status Notifications"),
+                    subtitle: AidenteL10n.t("仅控制暂停、恢复充电的提醒；不影响任务通知。", "Notify when charging pauses or resumes; workflow notifications are separate."),
                     icon: "bolt.badge.clock.fill",
                     colors: AidenteTheme.automationColors,
                     isOn: $showChargingStatusChangedNotification
                 )
                     .disabled(disableNotifications)
                     .opacity(disableNotifications ? 0.48 : 1)
+                    .padding(.leading, 18)
+                Text(AidenteL10n.t("通知还需在 macOS 系统设置中允许 Aidente；此处开关不会更改系统权限。", "macOS must also allow Aidente notifications. These switches do not change system permission."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         .onChange(of: launchAtLogin) { _, newValue in

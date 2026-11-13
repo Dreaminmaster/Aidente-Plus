@@ -82,6 +82,8 @@ struct SpecificationsWidget: View {
 }
 struct FullDashboardView: View {
     let viewModel: MenuViewModel
+    @State private var showPowerFlow = true
+    @Environment(\.accessibilityReduceMotion) private var reduceFlowMotion
     @Default(.lastCalibrationCompleted) private var lastCalibration
     @Default(.dashboardGraphPeriod) private var range
     @Default(.dashboardPowerAverage) private var average
@@ -101,9 +103,26 @@ struct FullDashboardView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     UtilitySurface {
                         VStack(alignment: .leading, spacing: 12) {
-                            Label(AidenteL10n.t("实时功率分配", "Live Power Flow"), systemImage: "arrow.triangle.branch").font(.headline)
+                            Button {
+                                withAnimation(reduceFlowMotion ? nil:.easeInOut(duration:0.22)) { showPowerFlow.toggle() }
+                            } label: {
+                                HStack {
+                                    Label(AidenteL10n.t("实时功率分配", "Live Power Flow"),systemImage:"arrow.triangle.branch").font(.headline)
+                                    Spacer()
+                                    Image(systemName:showPowerFlow ? "chevron.up":"chevron.down").font(.caption)
+                                }.contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                            ScrollView(.horizontal) {
+                                HStack(spacing:18) {
+                                    Label(String(format:"%.1f W",viewModel.adapterPower),systemImage:"powerplug.portrait.fill").help(AidenteL10n.t("适配器","Adapter"))
+                                    Label(String(format:"%.1f W",viewModel.systemPower),systemImage:"laptopcomputer").help(AidenteL10n.t("电脑使用","Mac"))
+                                    Label(String(format:"%+.1f W",viewModel.batteryPower),systemImage:"battery.100").help(AidenteL10n.t("电池：正值充入，负值放出","Battery: positive charges, negative discharges"))
+                                }.font(.system(size:12,weight:.medium)).monospacedDigit().padding(.vertical,3)
+                            }
+                            if showPowerFlow {
                             PowerSankeyView(powerSource: viewModel.powerSource, isCharging: viewModel.isCharging, batteryPower: viewModel.batteryPower, adapterPower: viewModel.adapterPower, systemPower: viewModel.systemPower, components: viewModel.componentPower)
                                 .frame(maxWidth: 600).frame(maxWidth: .infinity)
+                            }
                         }
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), alignment: .top)], alignment: .leading, spacing: 16) {
