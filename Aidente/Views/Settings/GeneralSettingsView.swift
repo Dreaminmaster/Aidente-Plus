@@ -1,6 +1,7 @@
 import AppKit
 import Defaults
 import SwiftUI
+import UserNotifications
 
 struct GeneralSettingsView: View {
     @Default(.appLanguage) var appLanguage
@@ -142,6 +143,10 @@ struct GeneralSettingsView: View {
                     .disabled(disableNotifications)
                     .opacity(disableNotifications ? 0.48 : 1)
                     .padding(.leading, 18)
+                Button(AidenteL10n.t("请求系统通知授权…","Request Notification Permission…")) {
+                    guard !AidenteRuntime.isUIPreview else { return }
+                    UNUserNotificationCenter.current().requestAuthorization(options:[.alert,.sound]) { _,_ in }
+                }.buttonStyle(.link)
                 Text(AidenteL10n.t("通知还需在 macOS 系统设置中允许 Aidente；此处开关不会更改系统权限。", "macOS must also allow Aidente notifications. These switches do not change system permission."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }

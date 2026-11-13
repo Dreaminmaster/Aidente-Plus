@@ -101,6 +101,11 @@ class MenuViewModel {
         self.batteryHistoryService = batteryHistoryService
         self.bootTimestamp = SystemService.bootTimestamp()
         dashboardReadings = DashboardTrendStore.shared.load()
+        batteryService.onFastConnection = { [weak self] state in
+            self?.adapterConnected=state.connected
+            self?.isCharging=state.charging
+            self?.chargingMode=state.connected ? (state.charging ? .charging:.pluggedIn):.discharging
+        }
         startObservingMetrics()
         startObservingHistory()
         startObservingSettings()
@@ -251,7 +256,7 @@ class MenuViewModel {
 
         updateUptimeText()
 
-        if derivedPowerSource == .acAdapter {
+        if adapter.adapterConnected {
             if metrics.isCharging {
                 chargingMode = .charging
                 batteryModeText = AidenteL10n.t("正在充电")

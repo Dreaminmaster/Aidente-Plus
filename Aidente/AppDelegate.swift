@@ -119,8 +119,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 statusBarManager.showPopoverForPreview()
             }
             observePowerEvents()
-            if !AidenteRuntime.isUIPreview { requestNotificationPermissions() }
             openSettingsFromCommandLineIfRequested()
+            BatteryManagementSetup.shared.showWelcomeIfNeeded()
             if !AidenteRuntime.isUIPreview && Defaults[.popoverShowOnLaunch] { statusBarManager.showPopoverForPreview() }
             if AidenteRuntime.isUIPreview, let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--dump-preview-metrics=") }) {
                 Task {
@@ -199,6 +199,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         PowerMetadataService.shared.start()
         configureApplicationActions()
+        BatteryManagementSetup.shared.onEnabled = { [weak self] in self?.chargeManager.retryControlAfterRepair() }
         if !AidenteRuntime.isUIPreview { AidenteAppShortcuts.updateAppShortcutParameters() }
         SleepBehaviorService.shared.startMonitoring()
         configureCompleteUninstaller()

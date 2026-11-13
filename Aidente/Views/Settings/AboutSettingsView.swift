@@ -98,7 +98,7 @@ struct AboutSettingsView: View {
 
                 AidenteSettingToggle(
                     "自动检查更新",
-                    subtitle: "私有仓库版本通过已登录的浏览器下载更新，不在应用中保存 GitHub 凭据",
+                    subtitle: AidenteL10n.t("发现公开发行的新版本时提醒；由你选择是否安装。", "Notify when a new public release is available; you choose whether to install it."),
                     icon: "clock.arrow.2.circlepath",
                     colors: [AidenteTheme.jade, AidenteTheme.sky],
                     isOn: $automaticallyCheckForUpdates

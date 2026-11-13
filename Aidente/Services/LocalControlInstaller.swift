@@ -83,6 +83,7 @@ enum LocalControlInstaller {
             process.waitUntilExit()
             guard process.terminationStatus == 0 else {
                 let message = String(data: output, encoding: .utf8) ?? "Administrator installation failed"
+                if message.contains("(-128)") { throw CocoaError(.userCancelled) }
                 throw XPCError.commandFailed(String(message.suffix(1800)))
             }
         }.value

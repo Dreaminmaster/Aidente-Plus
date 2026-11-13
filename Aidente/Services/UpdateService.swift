@@ -198,7 +198,7 @@ private enum AidenteUpdateError: LocalizedError {
 @Observable
 final class UpdateService {
     static let shared = UpdateService()
-    static let privateRepositoryDistribution = true
+    static let privateRepositoryDistribution = false
 
     static let releasesPageURL = URL(
         string: "https://github.com/Dreaminmaster/Aidente-Plus/releases"
@@ -927,6 +927,7 @@ final class UpdateService {
             throw AidenteUpdateError.invalidSignature(signature.output)
         }
 
+        try SignedUpdateVerifier.verify(candidate:candidateURL,installed:installedApplicationURL)
         let executableURL = candidateURL.appendingPathComponent("Contents/MacOS/Aidente")
         let architecture = runProcess(
             executable: URL(fileURLWithPath: "/usr/bin/lipo"),

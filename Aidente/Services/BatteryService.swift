@@ -50,6 +50,7 @@ final class XPCCommandReply<Value: Sendable>: @unchecked Sendable {
 @MainActor
 @Observable
 class BatteryService {
+    var onFastConnection: ((PowerConnectionSnapshot) -> Void)?
     private(set) var nativeChargeLimits: [Int] = []
     var usesNativeChargeLimit: Bool { !nativeChargeLimits.isEmpty }
     var metrics = BatteryMetrics()
@@ -82,6 +83,14 @@ class BatteryService {
     init() {
         logger.info("BatteryService initialized")
         xpcManager.connect()
+        ioKitService.onConnection = { [weak self] state in
+            guard let self else { return }
+            self.adapterMetrics.adapterConnected=state.connected
+            self.metrics.externalConnected=state.connected
+            self.metrics.isCharging=state.charging
+            self.onFastConnection?(state)
+            self.logger.notice("FAST_POWER_CONNECTION connected=\(state.connected,privacy:.public)")
+        }
         startIOKitMonitoring()
     }
 

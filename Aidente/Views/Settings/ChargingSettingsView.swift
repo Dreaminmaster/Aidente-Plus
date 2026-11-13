@@ -144,7 +144,7 @@ struct ChargingSettingsView: View {
             }
             UtilitySurface {
                 VStack(spacing: 10) {
-                    AidenteSettingToggle("管理充电", subtitle: "首次启用或升级需管理员授权安装后台服务，无需开发者账号", icon: "switch.2", colors: [], isOn: Binding(get: { manageCharging }, set: { toggleManageCharging($0) }))
+                    AidenteSettingToggle("管理充电", subtitle: "首次启用或升级需管理员授权安装后台服务，无需开发者账号", icon: "switch.2", colors: [], isOn: Binding(get: { manageCharging && helperManager.isInstalled && helperManager.registrationError == nil }, set: { toggleManageCharging($0) }))
                         .disabled(helperManager.isBusy || AidenteRuntime.isUIPreview || helperManager.isRunningFromDiskImage)
                     HStack {
                         Text(AidenteRuntime.isUIPreview ? AidenteL10n.t("界面预览 · 不会控制充电", "UI Preview · No charging control") : chargeManager.operationStatusTitle).font(.caption).foregroundStyle(.secondary)
@@ -176,8 +176,7 @@ struct ChargingSettingsView: View {
         Task {
             do {
                 if enabled {
-                    try await helperManager.enableForUser()
-                    manageCharging = true
+                    guard try await BatteryManagementSetup.shared.enable() else { return }
                     await PowerMetadataService.shared.refreshSystemFullCharge()
                 } else {
                     try await chargeManager.disableChargingManagement()

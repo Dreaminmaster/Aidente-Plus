@@ -1,3 +1,4 @@
+import AidenteShared
 import Foundation
 import Defaults
 import IOKit
@@ -12,6 +13,9 @@ class IOKitService {
     private var interestNotification: io_object_t = 0
     private var batteryService: io_service_t = 0
     private var observedFull = false
+    var onConnection: ((PowerConnectionSnapshot) -> Void)?
+    private var fullRefresh: Task<Void,Never>?
+    private var lastConnection: PowerConnectionSnapshot?
 
     private var continuation: AsyncStream<(BatteryMetrics, AdapterMetrics)>.Continuation?
 
@@ -63,7 +67,7 @@ class IOKitService {
         if let source = IOPSNotificationCreateRunLoopSource({ context in
             guard let context else { return }
             let monitor = Unmanaged<IOKitService>.fromOpaque(context).takeUnretainedValue()
-            MainActor.assumeIsolated { monitor.emitMetrics() }
+            MainActor.assumeIsolated { monitor.powerNotificationReceived() }
         }, context)?.takeRetainedValue() {
             powerSourceNotification = source
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -74,7 +78,7 @@ class IOKitService {
             let monitor = Unmanaged<IOKitService>.fromOpaque(refcon)
                 .takeUnretainedValue()
             MainActor.assumeIsolated {
-                monitor.emitMetrics()
+                monitor.powerNotificationReceived()
             }
         }
 
@@ -93,10 +97,26 @@ class IOKitService {
             logger.error("Failed to register interest notification: \(result)")
         }
 
-        emitMetrics()
+        powerNotificationReceived()
+    }
+
+    private func powerNotificationReceived() {
+        let snapshot=IOPSCopyPowerSourcesInfo().takeRetainedValue()
+        let type=IOPSGetProvidingPowerSourceType(snapshot).takeUnretainedValue() as String
+        let connected:Bool?=getPropertyValue(batteryService,key:"ExternalConnected")
+        let charging:Bool=getPropertyValue(batteryService,key:"IsCharging") ?? false
+        let state=PowerConnectionSnapshot.resolve(externalConnected:connected,providingAC:type == (kIOPSACPowerValue as String),charging:charging)
+        if state != lastConnection { lastConnection=state;onConnection?(state) }
+        // Let the status item paint before enumerating capabilities, adapter profiles and health.
+        guard fullRefresh == nil else { return }
+        fullRefresh=Task { @MainActor [weak self] in
+            try? await Task.sleep(for:.milliseconds(25))
+            guard !Task.isCancelled else { return };self?.fullRefresh=nil;self?.emitMetrics()
+        }
     }
 
     private func stop() {
+        fullRefresh?.cancel();fullRefresh=nil
         if let source = powerSourceNotification {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
             powerSourceNotification = nil
@@ -170,7 +190,6 @@ class IOKitService {
         adapterMetrics.protocolName = adapterSpecification.protocolName
         adapterMetrics.powerProfiles = adapterSpecification.profiles
         adapterMetrics.adapterConnected = batteryMetrics.externalConnected
-            || adapterMetrics.maximumSupportedPower > 0
 
         if let temp = getBatteryTemperature(powerInfo: powerInfo) {
             batteryMetrics.batteryTemperature = temp

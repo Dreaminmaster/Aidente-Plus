@@ -1,3 +1,4 @@
+import AidenteShared
 import Defaults
 import Foundation
 import smc_power
@@ -34,6 +35,7 @@ enum AidenteMigration {
     }
     private static func migrateMenuReadoutsIfNeeded() {
         let defaults = UserDefaults.standard
+        ManagementPreferenceMigration.apply(to:defaults,domain:Bundle.main.bundleIdentifier ?? "com.aidente.app")
         guard !defaults.bool(forKey: "didMigrateMenuReadoutsV2") else { return }
         if let legacy = defaults.string(forKey: "menuBarReadoutStyle"), legacy != "batteryPercentage" {
             var metrics = defaults.stringArray(forKey: "menuBarMetrics") ?? []
@@ -148,6 +150,7 @@ enum InterfaceMaterialStyle: String, Defaults.Serializable, CaseIterable, Identi
 
 extension Defaults.Keys {
     // General
+    static let didCompleteBatterySetup = Key<Bool>("didCompleteBatterySetup", default: false, suite: AidenteRuntime.preferenceStore)
     static let interfaceAppearance = Key<InterfaceAppearance>("interfaceAppearance", default: .system, suite: AidenteRuntime.preferenceStore)
     static let showDockIcon = Key<Bool>("showDockIcon", default: true, suite: AidenteRuntime.preferenceStore)
     static let appLanguage = Key<AppLanguage>("appLanguage", default: .system, suite: AidenteRuntime.preferenceStore)
@@ -196,7 +199,7 @@ extension Defaults.Keys {
     static let heatProtectionLimit = Key<Int>("heatProtectionLimit", default: 40, suite: AidenteRuntime.preferenceStore)
 
     // Charging - MagSafe LED Control
-    static let manageMagSafeLED = Key<Bool>("manageMagSafeLED", default: true, suite: AidenteRuntime.preferenceStore)
+    static let manageMagSafeLED = Key<Bool>("manageMagSafeLED", default: false, suite: AidenteRuntime.preferenceStore)
     static let heatProtectionMagSafeLEDState = Key<MagSafeLEDState>(
         "heatProtectionMagSafeLEDState", default: MagSafeLEDState.blinkOrangeSlow, suite: AidenteRuntime.preferenceStore)
 
@@ -204,7 +207,7 @@ extension Defaults.Keys {
     static let stopChargingWhenAppClosed = Key<Bool>(
         "stopChargingWhenAppClosed", default: false, suite: AidenteRuntime.preferenceStore)
     static let stopChargingWhileSleeping = Key<Bool>(
-        "stopChargingWhileSleeping", default: true, suite: AidenteRuntime.preferenceStore)
+        "stopChargingWhileSleeping", default: false, suite: AidenteRuntime.preferenceStore)
     static let topUpActive = Key<Bool>("topUpActive", default: false, suite: AidenteRuntime.preferenceStore)
     static let manualPauseActive = Key<Bool>("manualPauseActive", default: false, suite: AidenteRuntime.preferenceStore)
     static let forcedDischargeTarget = Key<Int>("forcedDischargeTarget", default: 80, suite: AidenteRuntime.preferenceStore)

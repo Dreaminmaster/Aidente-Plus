@@ -192,6 +192,7 @@ cat > "$stage/new-launch.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>com.aidente.app.control.local</string>
+<key>AssociatedBundleIdentifiers</key><array><string>com.aidente.app</string></array>
 <key>ProgramArguments</key><array><string>/Library/PrivilegedHelperTools/com.aidente.app.local/AidenteControl</string><string>--local-service</string></array>
 <key>MachServices</key><dict><key>com.aidente.app.control.local</key><true/></dict>
 <key>RunAtLoad</key><false/>

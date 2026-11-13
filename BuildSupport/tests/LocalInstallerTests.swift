@@ -15,6 +15,12 @@ enum XPCError: Error { case commandFailed(String) }
         var compiled: SecRequirement?
         precondition(SecRequirementCreateWithString(requirement as CFString, [], &compiled) == errSecSuccess)
         let script = try String(contentsOfFile: "BuildSupport/install_local_control.sh", encoding: .utf8)
+        let start=script.range(of:"cat > \"$stage/new-launch.plist\" <<'PLIST'\n")!.upperBound
+        let end=script.range(of:"\nPLIST",range:start..<script.endIndex)!.lowerBound
+        let launch=try PropertyListSerialization.propertyList(from:Data(script[start..<end].utf8),format:nil) as! [String:Any]
+        precondition(launch["AssociatedBundleIdentifiers"] as? [String] == ["com.aidente.app"])
+        let embedded=try PropertyListSerialization.propertyList(from:Data(contentsOf:URL(fileURLWithPath:"ChargingHelper/com.aidente.app.control.plist")),format:nil) as! [String:Any]
+        precondition(embedded["AssociatedBundleIdentifiers"] as? [String] == ["com.aidente.app"])
         let source = LocalControlInstaller.authorizationSource(script: script, arguments: ["install", String(repeating: "b", count: 64), String(repeating: "c", count: 64), hash])
         var error: NSDictionary?
         let appleScript = NSAppleScript(source: source)!
@@ -49,6 +55,6 @@ enum XPCError: Error { case commandFailed(String) }
         precondition(process.terminationStatus == 0 && !actualHash.isEmpty, "Installer must extract non-empty CDHash")
         let expectedHash = try LocalControlInstaller.signingCDHash(at: app)
         precondition(actualHash == expectedHash, "Installer CDHash must match Security.framework")
-        print("PASS: 11 local-installer checks including real copied-binary CDHash extraction (no system writes)")
+        print("PASS: 13 local-installer checks including real copied-binary CDHash extraction (no system writes)")
     }
 }
