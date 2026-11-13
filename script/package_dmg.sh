@@ -20,7 +20,7 @@ trap cleanup EXIT
 ditto Dist/Aidente.app "$staging_dir/Aidente.app"
 ln -s /Applications "$staging_dir/Applications"
 cat > "$staging_dir/安装说明.txt" <<'TEXT'
-Aidente 6.2 · Apple Silicon / macOS 14+
+Aidente 6.2.1 · Apple Silicon / macOS 14+
 
 安装：将 Aidente.app 拖入 Applications，推出磁盘映像，再从“应用程序”打开。
 

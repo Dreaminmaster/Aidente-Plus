@@ -306,8 +306,8 @@ final class UpdateService {
         switch phase {
         case .idle:
             return AidenteL10n.t(
-                "此版本使用私有 GitHub 仓库。请在已登录的浏览器中查看和下载更新。",
-                "This build uses a private GitHub repository. View and download updates in a signed-in browser."
+                "从公开发行页检查新版本，安装前由你确认。",
+                "Check public releases for new versions. You choose whether to install."
             )
         case .checking:
             return AidenteL10n.t(

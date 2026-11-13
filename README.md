@@ -1,6 +1,6 @@
 # Aidente-Plus
 
-独立的 MacBook 电池与充电管理项目。应用名称仍为 **Aidente**，当前版本 **6.2 / Build 22**。
+独立的 MacBook 电池与充电管理项目。应用名称仍为 **Aidente**，当前版本 **6.2.1 / Build 23**。
 
 基于开源 Aidente / Stasis 工作继续开发，保留 GPL-3.0 及第三方许可证。与 AppHouseKitchen、AlDente 无隶属关系；没有包含 AlDente 闭源程序、付费激活逻辑或原版素材。不宣称与 AlDente Pro 的全部功能、视觉或动画完全一致。
 
