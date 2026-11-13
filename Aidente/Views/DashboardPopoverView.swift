@@ -329,7 +329,10 @@ struct EnergyAppsWidget: View {
                                     .disabled(AidenteRuntime.isUIPreview)
                             }
                         }
-                    }.contentShape(Rectangle())
+                    }.frame(maxWidth: .infinity)
+                    // The trailing move transition must stay inside this row, including on removal.
+                    .clipped()
+                    .contentShape(Rectangle())
                     .contextMenu {
                         if !app.isBackground {
                             Button(AidenteL10n.t("退出", "Quit")) {
