@@ -22,6 +22,7 @@ struct EnergySettingsView: View {
                     if service.lowPowerPreset == 4 { Text(AidenteL10n.t("自定义", "Custom")).tag(4) }
                 }.labelsHidden().frame(width: 160).disabled(service.isBusy || AidenteRuntime.isUIPreview)
             }
+            AidenteSettingToggle("仅功耗模式激活时显示组件", subtitle: "开启：低/高功耗激活时显示。关闭：即使低电量模式关闭，也保留切换控制入口。此选项不代表已启用低电量模式。", icon: "leaf", colors: [], isOn: $compact)
             AidenteSettingToggle("后台仪表板更新", subtitle: "窗口关闭后继续记录趋势，每 15 秒读取一次。", icon: "arrow.clockwise.circle", colors: [], isOn: $backgroundUpdates)
             AidenteCard("使用大量能耗的 App", icon: "bolt", colors: []) {
                 UtilitySurface {
@@ -51,7 +52,6 @@ struct EnergySettingsView: View {
                             }
                         }
                     }
-                    Toggle(AidenteL10n.t("使用紧凑功耗小组件", "Compact Energy Mode Widget"), isOn: $compact).toggleStyle(.switch)
                     Text(AidenteL10n.t("修改需要已授权的控制服务。关闭管理或完全卸载时恢复先前保存的功耗设置。", "Changes require the authorized helper. Disabling management or uninstalling restores the saved energy settings.")).font(.caption).foregroundStyle(.secondary)
                     if !ChargingHelperManager.shared.isInstalled {
                         Button(AidenteL10n.t("安装或修复控制服务…", "Install or Repair Control Service…")) {

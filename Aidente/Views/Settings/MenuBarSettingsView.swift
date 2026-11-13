@@ -1,10 +1,14 @@
+import AidenteShared
 import Defaults
 import SwiftUI
+import UniformTypeIdentifiers
+import OSLog
 
 struct MenuBarSettingsView: View {
     let viewModel: MenuViewModel
     @Default(.menuBarIconStyle) private var iconStyle
     @Default(.menuBarMetrics) private var metricIDs
+    @Default(.menuBarMainIconPosition) private var mainPosition
     @Default(.menuBarHiddenMetricIcons) private var hiddenMetricIcons
     @Default(.menuBarItemSpacing) private var itemSpacing
     @Default(.menuBarUpdateInterval) private var updateInterval
@@ -14,8 +18,17 @@ struct MenuBarSettingsView: View {
     @Default(.batteryPercentageDisplayLocation) private var percentageLocation
     @Default(.showBatteryStateInStatusIcon) private var stateColors
     @Default(.menuBarReadoutStyle) private var legacyReadout
-    @State private var draggedMetric: String?
+    @Default(.chargingIndicatorStyle) private var indicatorStyle
+    @State private var cardDrag = CardDragState()
+    @State private var showIconOptions = true
+    @State private var animatedOrder: [String] = []
 
+    private var orderedItems: [String] { MenuItemOrdering.layout(metrics: selected.map(\.id), mainPosition: mainPosition, includeMain: iconStyle != .hidden || percentageLocation != .hidden) }
+    private var renderedItems: [String] { animatedOrder.isEmpty ? orderedItems : animatedOrder }
+    private var orderBinding: Binding<[String]> { Binding(get: { renderedItems }, set: { items in
+        withAnimation(.easeInOut(duration: 0.24)) { animatedOrder = items }
+        applyOrder(items)
+    }) }
     private var selected: [MenuBarMetric] { MenuBarMetric.selected(from: metricIDs) }
     private var groups: [String] {
         MenuBarMetric.allCases.reduce(into: []) { result, metric in
@@ -26,44 +39,54 @@ struct MenuBarSettingsView: View {
     var body: some View {
         AidenteSettingsPage {
             AidenteCard("已选菜单栏项目", subtitle: "拖动调整读数顺序；点击读数切换其图标，点击减号移除。", icon: "menubar.rectangle", colors: []) {
+                Text(AidenteL10n.t("拖动整张卡片调整顺序，主图标也可移动；点击读数切换图标，减号移除。", "Drag a whole card to reorder, including the main icon. Click a reading to toggle its icon; minus removes it.")).font(.caption).foregroundStyle(.secondary)
                 UtilitySurface {
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
-                            if iconStyle != .hidden || percentageLocation != .hidden {
-                                BatteryIndicatorView(batteryLevel: viewModel.displayPercentage, chargingMode: viewModel.chargingMode,
-                                    isLowPowerModeEnabled: lowPowerColor && viewModel.isLowPowerModeEnabled,
-                                    percentageDisplayLocation: percentageLocation, showState: stateColors, style: iconStyle, adapterConnected: viewModel.adapterConnected)
-                                    .padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-                            }
-                            ForEach(selected) { metric in
+                            ForEach(renderedItems, id: \.self) { item in
+                                FreeReorderCard(id: item, drag: $cardDrag, move: { source, target in
+                                    orderBinding.wrappedValue = MenuItemOrdering.moving(source, onto: target, in: renderedItems)
+                                }) {
                                 VStack(spacing: 5) {
-                                    HStack(spacing: 5) {
-                                        Button { toggleMetricIcon(metric) } label: {
-                                            HStack(spacing: 5) {
-                                                if !hiddenMetricIcons.contains(metric.id) { Image(systemName: metric.icon) }
-                                                Text(MenuBarSnapshot(viewModel: viewModel).values[metric.id] ?? "—").monospacedDigit()
-                                            }
-                                        }.buttonStyle(.plain).help(AidenteL10n.t("点击显示或隐藏读数图标", "Click to show or hide the reading icon"))
-                                        Button { metricIDs.removeAll { $0 == metric.id } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.borderless).accessibilityLabel(AidenteL10n.t("移除", "Remove") + " " + metric.title)
+                                    if item == MenuItemOrdering.main {
+                                        BatteryIndicatorView(batteryLevel: viewModel.displayPercentage, chargingMode: viewModel.chargingMode,
+                                            isLowPowerModeEnabled: lowPowerColor && viewModel.isLowPowerModeEnabled,
+                                            percentageDisplayLocation: percentageLocation, showState: stateColors, style: iconStyle, adapterConnected: viewModel.adapterConnected)
+                                            .frame(minHeight: 20)
+                                        Text(AidenteL10n.t("主图标", "Main Icon")).font(.system(size: 9)).foregroundStyle(.secondary)
+                                    } else if let metric = MenuBarMetric(rawValue: item) {
+                                        HStack(spacing: 5) {
+                                            Button { toggleMetricIcon(metric) } label: {
+                                                HStack(spacing: 5) {
+                                                    if !hiddenMetricIcons.contains(metric.id) { Image(systemName: metric.icon) }
+                                                    Text(MenuBarSnapshot(viewModel: viewModel).values[metric.id] ?? "—").monospacedDigit()
+                                                }
+                                            }.buttonStyle(.plain).help(AidenteL10n.t("点击显示或隐藏读数图标", "Click to show or hide the reading icon"))
+                                            Button { applyOrder(orderedItems.filter { $0 != item }) } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.secondary) }
+                                                .buttonStyle(.borderless).accessibilityLabel(AidenteL10n.t("移除", "Remove") + " " + metric.title)
+                                        }.frame(minHeight: 20)
+                                        Text(metric.title).font(.system(size: 9)).foregroundStyle(.secondary)
                                     }
-                                    Text(metric.title).font(.system(size: 9)).foregroundStyle(.secondary)
                                 }.padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-                                    .onDrag { draggedMetric = metric.id; return NSItemProvider(object: metric.id as NSString) }
-                                    .onDrop(of: [.text], delegate: MetricReorderDropDelegate(target: metric.id, values: $metricIDs, dragged: $draggedMetric))
+                                    .contentShape(RoundedRectangle(cornerRadius: 12))
                                     .contextMenu {
-                                        Button(AidenteL10n.t("左移", "Move Left")) { move(metric, -1) }.disabled(metricIDs.first == metric.id)
-                                        Button(AidenteL10n.t("右移", "Move Right")) { move(metric, 1) }.disabled(metricIDs.last == metric.id)
-                                        Button(AidenteL10n.t("移除", "Remove")) { metricIDs.removeAll { $0 == metric.id } }
+                                        Button(AidenteL10n.t("左移", "Move Left")) { moveItem(item, -1) }.disabled(orderedItems.first == item)
+                                        Button(AidenteL10n.t("右移", "Move Right")) { moveItem(item, 1) }.disabled(orderedItems.last == item)
+                                        if item != MenuItemOrdering.main { Button(AidenteL10n.t("移除", "Remove")) { applyOrder(orderedItems.filter { $0 != item }) } }
                                     }
+                                }
                             }
                             if iconStyle == .hidden && selected.isEmpty { Text(AidenteL10n.t("从下方目录添加项目", "Add items from the catalog below")).font(.caption).foregroundStyle(.secondary) }
                         }.frame(minHeight: 40).padding(.vertical, 4)
-                    }.scrollIndicators(.visible)
+                            .animation(.easeInOut(duration: 0.24), value: renderedItems)
+                    }.scrollIndicators(.visible).scrollClipDisabled()
+                    .onPreferenceChange(CardFramesPreference.self) { cardDrag.frames = $0 }
                 }
             }
             AidenteCard("菜单栏项目目录", icon: "book", colors: []) {
                 UtilitySurface {
                     VStack(alignment: .leading, spacing: 20) {
+                        DisclosureGroup(AidenteL10n.t("主图标样式与选项", "Main Icon Style and Options"), isExpanded: $showIconOptions) {
                         Text(AidenteL10n.t("主图标样式（选择一个）", "Main Icon Style (Choose One)")).font(.caption).foregroundStyle(.secondary)
                         ScrollView(.horizontal) {
                             HStack(alignment: .top, spacing: 6) {
@@ -95,8 +118,16 @@ struct MenuBarSettingsView: View {
                                 set: { percentageLocation = $0 ? iconStyle.defaultPercentageLocation : .hidden }
                             )).labelsHidden().toggleStyle(.switch)
                         }
+                        HStack {
+                            Text(AidenteL10n.t("接电标记样式", "Plugged-in Indicator"))
+                            Spacer()
+                            Picker("", selection: $indicatorStyle) { ForEach(ChargingIndicatorStyle.allCases) { Text($0.title).tag($0) } }.labelsHidden().frame(width: 190)
+                        }
+                        Text(AidenteL10n.t("自动：充电用闪电，暂停保持用插头。也可固定图案；实际充电状态以状态说明为准。", "Automatic uses a bolt while charging and a plug while holding. A fixed glyph is cosmetic; the status text reports the actual state.")).font(.caption).foregroundStyle(.secondary)
                         AidenteSettingToggle("低电量模式颜色", icon: "paintpalette", colors: [], isOn: $lowPowerColor)
                         AidenteSettingToggle("用颜色显示电池状态", icon: "paintpalette.fill", colors: [], isOn: $stateColors)
+                        }
+                        Divider()
                         ForEach(groups, id: \.self) { group in
                             VStack(alignment: .leading, spacing: 10) {
                                 Text(group).font(.caption).foregroundStyle(.secondary)
@@ -138,7 +169,21 @@ struct MenuBarSettingsView: View {
                     Picker("", selection: $rightClick) { ForEach(MenuBarRightClick.allCases) { Text($0.title).tag($0) } }.labelsHidden().frame(width: 150)
                 }
             }
-        }.onAppear { viewModel.menuWillOpen() }.onDisappear { viewModel.menuDidClose() }
+        }.onAppear { animatedOrder = orderedItems; viewModel.menuWillOpen() }
+        .onDisappear { cardDrag.item = nil; viewModel.menuDidClose() }
+        .task(id: orderedItems) {
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.24)) { animatedOrder = orderedItems }
+        }
+    }
+    private func applyOrder(_ items: [String]) {
+        if let position = items.firstIndex(of: MenuItemOrdering.main) { mainPosition = position }
+        metricIDs = items.filter { MenuBarMetric(rawValue: $0) != nil }
+    }
+    private func moveItem(_ item: String, _ offset: Int) {
+        guard let index = orderedItems.firstIndex(of: item), orderedItems.indices.contains(index + offset) else { return }
+        applyOrder(MenuItemOrdering.moving(item, onto: orderedItems[index + offset], in: orderedItems))
     }
     private func toggleMetricIcon(_ metric: MenuBarMetric) {
         if hiddenMetricIcons.contains(metric.id) { hiddenMetricIcons.removeAll { $0 == metric.id } }
@@ -152,22 +197,9 @@ struct MenuBarSettingsView: View {
         metricIDs.swapAt(index, index + offset)
     }
     private func reset() {
-        iconStyle = .status; metricIDs = []; hiddenMetricIcons = []; percentageLocation = .nextToIcon
+        mainPosition = 0; iconStyle = .status; metricIDs = []; hiddenMetricIcons = []; percentageLocation = .nextToIcon
         lowPowerColor = true; stateColors = true; itemSpacing = 5; updateInterval = 5
         legacyReadout = .batteryPercentage; rightClick = .popover
     }
 
-}
-
-private struct MetricReorderDropDelegate: DropDelegate {
-    let target: String
-    @Binding var values: [String]
-    @Binding var dragged: String?
-    func dropEntered(info: DropInfo) {
-        guard let dragged, dragged != target,
-              let source = values.firstIndex(of: dragged), let destination = values.firstIndex(of: target) else { return }
-        withAnimation { values.move(fromOffsets: IndexSet(integer: source), toOffset: destination > source ? destination + 1 : destination) }
-    }
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-    func performDrop(info: DropInfo) -> Bool { dragged = nil; return true }
 }

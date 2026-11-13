@@ -16,14 +16,14 @@ struct SleepSettingsView: View {
     private let service = SleepBehaviorService.shared
     var body: some View {
         AidenteSettingsPage {
-            AidenteCard("防止睡眠期间过充电", icon: "minus.circle", colors: []) {
+            AidenteCard("睡眠期间的充电行为", icon: "minus.circle", colors: []) {
                 UtilitySurface {
                     VStack(alignment: .leading, spacing: 16) {
                         Text(AidenteL10n.t("选择 Aidente 在睡眠和充电时的行为方式", "Choose how Aidente handles sleep while charging")).font(.caption).foregroundStyle(.secondary)
                         Picker("", selection: Binding(get: { untilLimit ? 2 : stopSleeping ? 1 : 0 }, set: { value in
                             untilLimit = value == 2; stopSleeping = value == 1
                         })) {
-                            Text(AidenteL10n.t("像以前一样继续", "Continue as Before")).tag(0)
+                            Text(AidenteL10n.t("保持当前充电策略", "Keep Charging Policy")).tag(0)
                             Text(AidenteL10n.t("睡眠时暂停充电", "Pause Charging During Sleep")).tag(1)
                             Text(AidenteL10n.t("达到上限前阻止睡眠", "Prevent Sleep Until Charge Limit")).tag(2)
                         }.labelsHidden().disabled(nativeLimitOnly)
@@ -31,7 +31,14 @@ struct SleepSettingsView: View {
                             Text("系统原生限充在睡眠期间由 macOS 维护；不支持 Aidente 的睡眠精确暂停策略。其他睡眠工具仍可单独使用。")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        Label(AidenteL10n.t("睡眠时系统检查频率会降低，电量可能略微超过上限。", "During sleep, reduced polling can allow a small overshoot."), systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                        Text(untilLimit
+                            ? AidenteL10n.t("在低于上限且正在充电时阻止闲置睡眠，达到上限后恢复。手动强制睡眠和部分机型的合盖行为仍由系统决定。", "Prevents idle sleep while charging below the limit, then releases it. Forced sleep and lid behavior remain controlled by macOS.")
+                            : stopSleeping
+                            ? AidenteL10n.t("进入睡眠前暂停充电，唤醒后恢复正常管理。适合希望正常睡眠、睡眠期间不继续充电的情况。", "Pauses charging before sleep and resumes normal management after wake.")
+                            : AidenteL10n.t("允许正常睡眠，后台继续维持现有充电上限；系统在睡眠时可能降低检查频率。", "Allows normal sleep while the helper maintains the charge limit; macOS may reduce checks during sleep."))
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Text(AidenteL10n.t("更改选项后仍会核对真实充电功率；“待确认”表示正在等待读数，并不表示已经确认暂停。", "Power readings are still verified after changes. Verifying means waiting for evidence, not a confirmed pause."))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }

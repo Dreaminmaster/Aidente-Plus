@@ -82,6 +82,11 @@ class ChargeManager {
         let followNaturalDrift: Bool
         let chargeCeiling: Int
         let rechargeBelow: Int
+        func hasSameAwakePowerPolicy(as other: Self) -> Bool {
+            charging == other.charging && adapter == other.adapter && managed == other.managed
+                && followNaturalDrift == other.followNaturalDrift && chargeCeiling == other.chargeCeiling
+                && rechargeBelow == other.rechargeBelow
+        }
     }
     private var pendingPowerRequest: PowerRequest?
     private var appliedPowerRequest: PowerRequest?
@@ -588,13 +593,14 @@ class ChargeManager {
                         chargeCeiling: request.chargeCeiling, rechargeBelow: request.rechargeBelow
                     )
                     let changed = appliedPowerRequest != request
+                    let preserveHold = powerHoldVerified && appliedPowerRequest.map { request.hasSameAwakePowerPolicy(as: $0) } == true
                     appliedPowerRequest = request
                     lastPowerApplication = Date()
                     guard pendingPowerRequest == request else { continue }
                     clearControlErrors()
                     batteryService.scheduleSinglePoll()
                     if request.charging { sendChargingStateNotification(charging: true, reason: reason) }
-                    if changed { schedulePowerVerification(request) }
+                    if changed { schedulePowerVerification(request, preserveVerifiedHold: preserveHold) }
                 } catch {
                     appliedPowerRequest = nil
                     guard pendingPowerRequest == request else { continue }
@@ -625,10 +631,10 @@ class ChargeManager {
         }
     }
 
-    private func schedulePowerVerification(_ request: PowerRequest) {
+    private func schedulePowerVerification(_ request: PowerRequest, preserveVerifiedHold: Bool = false) {
         verificationTask?.cancel()
         powerFlowError = nil
-        powerHoldVerified = false
+        powerHoldVerified = preserveVerifiedHold
         guard request.managed, !request.charging, request.adapter else { return }
         verificationTask = Task { [weak self] in
             var verification = ChargeHoldVerification()
@@ -652,7 +658,7 @@ class ChargeManager {
                 }
                 lastSample = sampleDate
                 switch verification.sample(batteryPower: batteryService.metrics.batteryPower) {
-                case .pending: powerHoldVerified = false
+                case .pending: if !preserveVerifiedHold || !batteryService.metrics.batteryPower.isFinite { powerHoldVerified = false }
                 case .held:
                     powerHoldVerified = true
                     powerFlowError = nil

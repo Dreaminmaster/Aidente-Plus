@@ -7,10 +7,11 @@ struct NativeRibbon: NSViewRepresentable {
     let left,right,top,bottom,endTop,endBottom:CGFloat
     let tint:Color?
     let dark,reducedMotion:Bool
+    var animateGeometry = true
     func makeNSView(context:Context) -> RibbonLayerView { RibbonLayerView() }
     func updateNSView(_ view:RibbonLayerView,context:Context) {
         let shape=RibbonGeometry(left:left,right:right,top:top,bottom:bottom,endTop:endTop,endBottom:endBottom)
-        view.configure(shape:shape,tint:tint.map { NSColor($0).cgColor },dark:dark,reducedMotion:reducedMotion)
+        view.configure(shape:shape,tint:tint.map { NSColor($0).cgColor },dark:dark,reducedMotion:reducedMotion,animateGeometry:animateGeometry)
     }
 }
 
@@ -18,16 +19,14 @@ struct RibbonGeometry: Equatable {
     let left,right,top,bottom,endTop,endBottom:CGFloat
     var path:CGPath {
         let bend=max(0,right-left)*0.48
-        let r=max(0,min(1.6,(bottom-top)/4,(endBottom-endTop)/4))
-        let p=CGMutablePath();p.move(to:CGPoint(x:left+r,y:top))
+        let r=max(0,min(5.5,(bottom-top)/3,(endBottom-endTop)/3))
+        let p=CGMutablePath();p.move(to:CGPoint(x:left,y:top))
         p.addCurve(to:CGPoint(x:right-r,y:endTop),control1:CGPoint(x:left+bend,y:top),control2:CGPoint(x:right-bend,y:endTop))
         p.addQuadCurve(to:CGPoint(x:right,y:endTop+r),control:CGPoint(x:right,y:endTop))
         p.addLine(to:CGPoint(x:right,y:endBottom-r))
         p.addQuadCurve(to:CGPoint(x:right-r,y:endBottom),control:CGPoint(x:right,y:endBottom))
-        p.addCurve(to:CGPoint(x:left+r,y:bottom),control1:CGPoint(x:right-bend,y:endBottom),control2:CGPoint(x:left+bend,y:bottom))
-        p.addQuadCurve(to:CGPoint(x:left,y:bottom-r),control:CGPoint(x:left,y:bottom))
-        p.addLine(to:CGPoint(x:left,y:top+r))
-        p.addQuadCurve(to:CGPoint(x:left+r,y:top),control:CGPoint(x:left,y:top))
+        p.addCurve(to:CGPoint(x:left,y:bottom),control1:CGPoint(x:right-bend,y:endBottom),control2:CGPoint(x:left+bend,y:bottom))
+        p.addLine(to:CGPoint(x:left,y:top))
         p.closeSubpath();return p
     }
 }
@@ -63,7 +62,7 @@ final class RibbonLayerView:NSView {
         setAccessibilityElement(false)
     }
     required init?(coder:NSCoder) { nil }
-    func configure(shape:RibbonGeometry,tint:CGColor?,dark:Bool,reducedMotion:Bool) {
+    func configure(shape:RibbonGeometry,tint:CGColor?,dark:Bool,reducedMotion:Bool,animateGeometry:Bool = true) {
         let old=geometry
         let changed=old != nil && old != shape
         geometry=shape;reduced=reducedMotion
@@ -75,7 +74,7 @@ final class RibbonLayerView:NSView {
         drop.shadowRadius=2;drop.shadowOffset=CGSize(width:0,height:1)
         let previousDrop=drop.presentation()?.path ?? drop.path
         drop.path=shape.path;drop.shadowPath=shape.path
-        if changed && !reducedMotion,let previousDrop {
+        if changed && !reducedMotion && animateGeometry,let previousDrop {
             let animation=CABasicAnimation(keyPath:"path");animation.fromValue=previousDrop;animation.toValue=shape.path
             animation.duration=0.65;animation.timingFunction=CAMediaTimingFunction(name:.easeInEaseOut)
             drop.add(animation,forKey:"shape")
@@ -85,20 +84,24 @@ final class RibbonLayerView:NSView {
         material.shadowPath=shape.path
         color.backgroundColor=tint;color.opacity=dark ? 0.27 : 0.24
         edge.strokeColor=NSColor.white.withAlphaComponent(dark ? 0.16 : 0.28).cgColor
-        glow.colors=[NSColor.clear.cgColor,NSColor.white.withAlphaComponent(dark ? 0.10 : 0.14).cgColor,NSColor.clear.cgColor]
+        glow.colors=[NSColor.clear.cgColor,
+                     NSColor(calibratedRed:0.61,green:0.71,blue:0.98,alpha:dark ? 0.12 : 0.10).cgColor,
+                     NSColor(calibratedRed:0.48,green:0.87,blue:0.78,alpha:dark ? 0.14 : 0.12).cgColor,
+                     NSColor.clear.cgColor]
+        glow.locations=[0,0.35,0.65,1]
         var maskTransform=CGAffineTransform(translationX:0,y:12)
         let maskPath=shape.path.copy(using:&maskTransform) ?? shape.path
         for mask in masks {
             let previous=mask.presentation()?.path ?? mask.path
             mask.path=maskPath
-            if changed && !reducedMotion,let previous {
+            if changed && !reducedMotion && animateGeometry,let previous {
                 let animation=CABasicAnimation(keyPath:"path");animation.fromValue=previous;animation.toValue=maskPath
                 animation.duration=0.65;animation.timingFunction=CAMediaTimingFunction(name:.easeInEaseOut)
                 mask.add(animation,forKey:"shape")
             } else { mask.removeAnimation(forKey:"shape") }
         }
         let previous=edge.presentation()?.path ?? edge.path;edge.path=shape.path
-        if changed && !reducedMotion,let previous {
+        if changed && !reducedMotion && animateGeometry,let previous {
             let animation=CABasicAnimation(keyPath:"path");animation.fromValue=previous;animation.toValue=shape.path
             animation.duration=0.65;animation.timingFunction=CAMediaTimingFunction(name:.easeInEaseOut);edge.add(animation,forKey:"shape")
         } else { edge.removeAnimation(forKey:"shape") }
@@ -117,22 +120,28 @@ final class RibbonLayerView:NSView {
         let height=max(1,bounds.height+24)
         material.startPoint=CGPoint(x:0.5,y:(low+12)/height);material.endPoint=CGPoint(x:0.5,y:(high+12)/height)
         bevel.startPoint=material.startPoint;bevel.endPoint=material.endPoint
-        glow.bounds=CGRect(x:0,y:0,width:48,height:max(1,high-low))
+        let glowWidth=max(72,(geometry.right-geometry.left)*0.7)
+        glow.bounds=CGRect(x:0,y:0,width:glowWidth,height:max(1,high-low))
         glow.position=CGPoint(x:geometry.left-24,y:12+(low+high)/2)
     }
     override func viewDidMoveToWindow() { super.viewDidMoveToWindow();updateReflection() }
     private func updateReflection() {
         guard let geometry else { return }
-        guard !reduced,window != nil else { glow.removeAnimation(forKey:"flow");glow.isHidden=true;cycleBounds=nil;return }
+        guard !reduced,window != nil else { glow.removeAllAnimations();glow.isHidden=true;cycleBounds=nil;return }
         glow.isHidden=false
         let extent=geometry.left...max(geometry.left,geometry.right)
         if cycleBounds != extent || glow.animation(forKey:"flow") == nil {
             cycleBounds=extent
             let animation=CABasicAnimation(keyPath:"position.x")
-            animation.fromValue=geometry.left-24;animation.toValue=geometry.right+24
-            animation.duration=2.8;animation.repeatCount = .infinity
-            animation.timingFunction=CAMediaTimingFunction(name:.linear)
+            animation.fromValue=geometry.left-glow.bounds.width/2;animation.toValue=geometry.right+glow.bounds.width/2
+            animation.duration=6.4;animation.repeatCount = .infinity
+            animation.timingFunction=CAMediaTimingFunction(name:.easeInEaseOut)
+            animation.beginTime=0
             glow.add(animation,forKey:"flow")
+            let pulse=CAKeyframeAnimation(keyPath:"opacity")
+            pulse.values=[0.35,0.9,0.5,0.35];pulse.keyTimes=[0,0.4,0.75,1]
+            pulse.duration=6.4;pulse.repeatCount = .infinity
+            glow.add(pulse,forKey:"pulse")
         }
     }
 }

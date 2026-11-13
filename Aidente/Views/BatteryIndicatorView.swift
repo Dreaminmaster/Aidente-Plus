@@ -1,13 +1,14 @@
 import SwiftUI
+import Defaults
 
 /// Shared geometry keeps the menu-bar allocation aligned with the rendered icon.
 enum BatteryIndicatorLayout {
-    static let bodyWidth: CGFloat = 16
-    static let bodyHeight: CGFloat = 10
+    static let bodyWidth: CGFloat = 23
+    static let bodyHeight: CGFloat = 13
     static let insideBodyWidth: CGFloat = 25
-    static let insideBodyHeight: CGFloat = 12
-    static let terminalWidth: CGFloat = 1.5
-    static let terminalHeight: CGFloat = 4
+    static let insideBodyHeight: CGFloat = 13
+    static let terminalWidth: CGFloat = 2
+    static let terminalHeight: CGFloat = 5
     static let terminalSpacing: CGFloat = 0.5
     static let outsideTextSpacing: CGFloat = 2
     static let statusInset: CGFloat = 1
@@ -18,6 +19,7 @@ enum BatteryIndicatorLayout {
 }
 
 struct BatteryIndicatorView: View {
+    @Default(.chargingIndicatorStyle) private var indicatorStyle
     let batteryLevel: Int
     let chargingMode: ChargingMode
     var isLowPowerModeEnabled: Bool = false
@@ -71,7 +73,7 @@ struct BatteryIndicatorView: View {
                 }
             } else if style == .appIcon {
                 HStack(spacing: 3) {
-                    Image(systemName: statusSymbol).font(.system(size: 15, weight: .medium))
+                    Image(systemName: statusSymbol).font(.system(size: 17, weight: .medium))
                     if percentageDisplayLocation != .hidden {
                         Text("\(batteryLevel)%").font(.system(size: 11)).monospacedDigit().lineLimit(1).fixedSize()
                     }
@@ -94,18 +96,17 @@ struct BatteryIndicatorView: View {
     private var statusBattery: some View {
         HStack(spacing: BatteryIndicatorLayout.terminalSpacing) {
             HStack(spacing: 2) {
-                if chargingMode == .charging { Image(systemName: "bolt.fill").font(.system(size: 9)) }
-                else if chargingMode == .pluggedIn {
-                    Image(systemName: "powerplug.portrait.fill").resizable().scaledToFit()
-                        .frame(width: 6, height: 9)
-                } else { Image(systemName: adapterConnected ? "minus" : "chevron.down").font(.system(size: 7, weight: .bold)) }
+                if chargingMode == .charging || chargingMode == .pluggedIn {
+                    Image(systemName: indicatorStyle.usesPlug(for: chargingMode) ? "powerplug.portrait.fill" : "bolt.fill")
+                        .resizable().scaledToFit().frame(width: 6, height: 10)
+                } else { Image(systemName: adapterConnected ? "minus" : "chevron.down").font(.system(size: 8, weight: .bold)) }
                 ForEach(0..<3) { bar in
                     RoundedRectangle(cornerRadius: 0.5).fill(.primary.opacity(batteryLevel > bar * 33 ? 1 : 0.2))
                         .frame(width: 2, height: 7)
                 }
-            }.padding(.horizontal, 2).frame(width: 24, height: 12)
+            }.padding(.horizontal, 2).frame(width: 26, height: 13)
                 .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(.primary.opacity(0.8), lineWidth: 0.8))
-            BatteryTerminal(width: 1.5, height: 4, cornerRadius: 0.5)
+            BatteryTerminal(width: 2, height: 5, cornerRadius: 0.5)
         }.foregroundStyle(isLowPowerModeEnabled ? AidenteTheme.gold : .primary)
     }
 
@@ -210,12 +211,9 @@ struct BatteryIndicatorView: View {
 
     @ViewBuilder
     private var chargingGlyph: some View {
-        if chargingMode == .charging {
-            Image(systemName: "bolt.fill")
-                .resizable().scaledToFit().frame(width: 4, height: 8)
-        } else if chargingMode == .pluggedIn {
-            Image(systemName: "powerplug.portrait.fill")
-                .resizable().scaledToFit().frame(width: 5.5, height: 8)
+        if chargingMode == .charging || chargingMode == .pluggedIn {
+            Image(systemName: indicatorStyle.usesPlug(for: chargingMode) ? "powerplug.portrait.fill" : "bolt.fill")
+                .resizable().scaledToFit().frame(width: indicatorStyle.usesPlug(for: chargingMode) ? 5.5 : 4, height: 8)
         }
     }
 }

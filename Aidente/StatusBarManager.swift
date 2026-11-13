@@ -109,7 +109,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
                 [.showDockIcon, .menuBarIconStyle, .menuBarMetrics, .menuBarHiddenMetricIcons, .menuBarItemSpacing,
                  .activeStatusItemsOnly, .menuBarUpdateInterval, .menuBarLowPowerColor, .appLanguage,
                  .showBatteryStateInStatusIcon, .menuBarReadoutStyle,
-                 .batteryPercentageDisplayLocation], initial: true
+                 .batteryPercentageDisplayLocation, .chargingIndicatorStyle, .menuBarMainIconPosition], initial: true
             ) {
                 guard let self else { return }
                 self.powerWidthObservation?.cancel()
@@ -391,6 +391,7 @@ struct StatusBarContentView: View {
     @Default(.showBatteryStateInStatusIcon) private var showState
     @Default(.menuBarIconStyle) private var iconStyle
     @Default(.menuBarMetrics) private var metricIDs
+    @Default(.menuBarMainIconPosition) private var mainPosition
     @Default(.menuBarHiddenMetricIcons) private var hiddenMetricIcons
     @Default(.menuBarItemSpacing) private var spacing
     @Default(.activeStatusItemsOnly) private var activeStatusOnly
@@ -398,24 +399,27 @@ struct StatusBarContentView: View {
 
     var body: some View {
         let snapshot = displayState.snapshot
+        let visible = Set(MenuBarMetric.visible(from: metricIDs, activeOnly: activeStatusOnly, active: snapshot.activeMetrics).map(\.id))
+        let showIcon = iconStyle != .hidden || percentageLocation != .hidden
+        let items = MenuItemOrdering.layout(metrics: MenuBarMetric.selected(from: metricIDs).map(\.id), mainPosition: mainPosition, includeMain: showIcon || readoutStyle != .batteryPercentage)
         HStack(spacing: CGFloat(max(0, min(20, spacing)))) {
-            BatteryIndicatorView(
-                batteryLevel: snapshot.percentage, chargingMode: snapshot.chargingMode,
-                isLowPowerModeEnabled: lowPowerColor && snapshot.lowPower,
-                percentageDisplayLocation: readoutStyle == .systemPower ? .hidden
-                    : readoutStyle == .batteryAndPower ? .insideIcon : percentageLocation,
-                showState: showState, style: iconStyle, adapterConnected: snapshot.adapterConnected
-            )
-            if readoutStyle != .batteryPercentage {
-                Text(snapshot.power).font(.system(size: 10.5, weight: .semibold)).monospacedDigit()
-            }
-            ForEach(MenuBarMetric.visible(from: metricIDs, activeOnly: activeStatusOnly, active: snapshot.activeMetrics)) { metric in
-                Group {
-                    if hiddenMetricIcons.contains(metric.id) { Text(snapshot.values[metric.id] ?? "—") }
-                    else { Label(snapshot.values[metric.id] ?? "—", systemImage: metric.icon) }
+            ForEach(items, id: \.self) { item in
+                if item == MenuItemOrdering.main {
+                    HStack(spacing: 3) {
+                        if showIcon {
+                            BatteryIndicatorView(batteryLevel: snapshot.percentage, chargingMode: snapshot.chargingMode,
+                                isLowPowerModeEnabled: lowPowerColor && snapshot.lowPower,
+                                percentageDisplayLocation: readoutStyle == .systemPower ? .hidden : readoutStyle == .batteryAndPower ? .insideIcon : percentageLocation,
+                                showState: showState, style: iconStyle, adapterConnected: snapshot.adapterConnected)
+                        }
+                        if readoutStyle != .batteryPercentage { Text(snapshot.power).font(.system(size: 10.5, weight: .semibold)).monospacedDigit() }
+                    }
+                } else if let metric = MenuBarMetric(rawValue: item), visible.contains(item) {
+                    Group {
+                        if hiddenMetricIcons.contains(metric.id) { Text(snapshot.values[metric.id] ?? "—") }
+                        else { Label(snapshot.values[metric.id] ?? "—", systemImage: metric.icon) }
+                    }.font(.system(size: 11)).monospacedDigit().help("\(metric.group) · \(metric.title)")
                 }
-                    .font(.system(size: 11)).monospacedDigit()
-                    .help("\(metric.group) · \(metric.title)")
             }
         }
         .fixedSize().lineLimit(1)

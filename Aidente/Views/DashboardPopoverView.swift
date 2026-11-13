@@ -271,6 +271,7 @@ struct EnergyAppsWidget: View {
     @State private var showingQuitConfirmation = false
     @State private var forceQuit = false
     private let quitService = AppQuitService.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceHoverMotion
     @State private var hoveredApp: String?
     @State private var hoveringList = false
     @State private var interactionID = UUID()
@@ -299,7 +300,7 @@ struct EnergyAppsWidget: View {
                         Image(nsImage: NSWorkspace.shared.icon(forFile: app.bundlePath)).resizable().frame(width: 22, height: 22)
                         Text(app.name).lineLimit(1).help(app.name)
                         Spacer()
-                        Text(app.measurementText).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        Text(app.measurementText).font(.caption.weight(.medium)).monospacedDigit().foregroundStyle(Color.primary.opacity(0.82))
                             .help(app.estimatedWatts == nil ? "暂未取得完整进程能量采样，显示近期平滑后的 CPU 活动；短暂波动不会立即增删条目。" : "由系统进程能量计数计算的近期平滑功率估算，不包含可完整归属的所有 GPU、屏幕或外设能耗。暂缺读数最多保留6秒；持续低用量后移除。")
                         if !app.isBackground {
                             if let state = quitService.states[app.bundlePath] {
@@ -318,17 +319,26 @@ struct EnergyAppsWidget: View {
                                         .menuStyle(.borderlessButton).fixedSize()
                                         .accessibilityLabel(AidenteL10n.t("仍在运行：", "Still running: ") + app.name)
                                 }
-                            } else {
+                            } else if hoveredApp == app.bundlePath {
                                 Button {
                                     quitting = app; forceQuit = false; showingQuitConfirmation = true
                                 } label: { Text(AidenteL10n.t("退出", "Quit")).font(.caption2).frame(width: 32) }
                                     .buttonStyle(.borderless)
-                                    .opacity(hoveredApp == app.bundlePath ? 1 : 0)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
                                     .accessibilityLabel(AidenteL10n.t("退出 ", "Quit ") + app.name)
                                     .disabled(AidenteRuntime.isUIPreview)
                             }
                         }
-                    }.onHover { hovering in hoveredApp = hovering ? app.bundlePath : nil }
+                    }.contentShape(Rectangle())
+                    .contextMenu {
+                        if !app.isBackground {
+                            Button(AidenteL10n.t("退出", "Quit")) {
+                                quitting = app; forceQuit = false; showingQuitConfirmation = true
+                            }.disabled(AidenteRuntime.isUIPreview)
+                        }
+                    }
+                    .animation(reduceHoverMotion ? nil : .easeInOut(duration: 0.2), value: hoveredApp == app.bundlePath)
+                    .onHover { hovering in hoveredApp = hovering ? app.bundlePath : nil }
                 }
             }
         }.frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)

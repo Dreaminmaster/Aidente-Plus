@@ -152,11 +152,12 @@ struct SettingsView: View {
                             .menuStyle(.borderlessButton).fixedSize().help(AidenteL10n.t("设置", "Settings"))
                     }.buttonStyle(AidenteActionButtonStyle(colors: []))
                 }.padding(12)
-            }.frame(width: 199).background(.regularMaterial)
+            }.frame(width: 199)
             Divider()
             detailContent.frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(AidenteWindowBackdrop())
+
         }
+        .background(AidenteWindowBackdrop())
         .frame(minWidth: 700, minHeight: 620)
         .ignoresSafeArea()
         .tint(.accentColor)
@@ -196,7 +197,7 @@ struct SettingsView: View {
         case .dashboard: DashboardSettingsView()
         case .charging: ChargingSettingsView(capabilities: capabilities, chargeManager: chargeManager)
         case .automation: AutomationSettingsView()
-        case .advanced: AdvancedSettingsView()
+        case .advanced: AdvancedSettingsView(onNavigate: { navigation.tab = $0 })
         case .diagnostics: DiagnosticsSettingsView(diagnosticCenter: diagnosticCenter)
         case .about: AboutSettingsView(updateService: updateService)
         }

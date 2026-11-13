@@ -21,7 +21,11 @@ struct EnergyModeWidget: View {
                 HStack(spacing: 8) {
                     Image(systemName: "leaf").font(.system(size: 15))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(AidenteL10n.t("低电量模式", "Low Power Mode")).font(.caption.weight(.semibold))
+                        Text(service.readings[service.activeSource]?.mode == .high
+                            ? AidenteL10n.t("高功耗模式", "High Power Mode")
+                            : service.readings[service.activeSource]?.mode == .low
+                            ? AidenteL10n.t("低电量模式", "Low Power Mode")
+                            : AidenteL10n.t("功耗模式", "Energy Mode")).font(.caption.weight(.semibold))
                         Text(subtitle).font(.caption2).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 2)

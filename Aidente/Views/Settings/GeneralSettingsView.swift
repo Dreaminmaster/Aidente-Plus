@@ -52,7 +52,7 @@ struct GeneralSettingsView: View {
                 .labelsHidden()
                 .id(appLanguage)
 
-                Label(AidenteL10n.t("材质已实时应用到当前窗口与菜单面板", "Material applies immediately to this window and the menu panel"), systemImage: "checkmark.circle")
+                Label(AidenteL10n.t("材质应用于整个窗口、侧栏和菜单面板", "Material applies immediately to this window and the menu panel"), systemImage: "checkmark.circle")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     Image(systemName: interfaceMaterialStyle.icon)

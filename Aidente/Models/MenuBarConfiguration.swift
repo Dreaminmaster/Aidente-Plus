@@ -30,6 +30,19 @@ enum MenuBarIconStyle: String, Defaults.Serializable, CaseIterable, Identifiable
     }
 }
 
+enum ChargingIndicatorStyle: String, Defaults.Serializable, CaseIterable, Identifiable {
+    case automatic, lightning, plug
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .automatic: AidenteL10n.t("自动区分充电与保持", "Automatic by State")
+        case .lightning: AidenteL10n.t("闪电", "Lightning")
+        case .plug: AidenteL10n.t("插头", "Plug")
+        }
+    }
+    func usesPlug(for mode: ChargingMode) -> Bool { self == .plug || (self == .automatic && mode == .pluggedIn) }
+}
+
 enum MenuBarRightClick: String, Defaults.Serializable, CaseIterable, Identifiable {
     case popover, none, toggleCharging, toggleLowPower, dashboard, settings, contextMenu
     var id: String { rawValue }
@@ -111,6 +124,8 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
 }
 
 extension Defaults.Keys {
+    static let menuBarMainIconPosition = Key<Int>("menuBarMainIconPosition", default: 0, suite: AidenteRuntime.preferenceStore)
+    static let chargingIndicatorStyle = Key<ChargingIndicatorStyle>("chargingIndicatorStyle", default: .automatic, suite: AidenteRuntime.preferenceStore)
     static let menuBarIconStyle = Key<MenuBarIconStyle>("menuBarIconStyle", default: .compact, suite: AidenteRuntime.preferenceStore)
     static let menuBarHiddenMetricIcons = Key<[String]>("menuBarHiddenMetricIcons", default: [], suite: AidenteRuntime.preferenceStore)
     static let menuBarMetrics = Key<[String]>("menuBarMetrics", default: [], suite: AidenteRuntime.preferenceStore)

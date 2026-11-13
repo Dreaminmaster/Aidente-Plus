@@ -49,7 +49,7 @@ extension Defaults.Keys {
     static let showAllRunningApps = Key<Bool>("showAllRunningApps", default: true, suite: AidenteRuntime.preferenceStore)
     static let energyUsageThreshold = Key<Int>("energyUsageThreshold", default: 5, suite: AidenteRuntime.preferenceStore)
     static let includeBackgroundEnergyProcesses = Key<Bool>("includeBackgroundEnergyProcesses", default: false, suite: AidenteRuntime.preferenceStore)
-    static let compactEnergyWidget = Key<Bool>("compactEnergyWidget", default: false, suite: AidenteRuntime.preferenceStore)
+    static let compactEnergyWidget = Key<Bool>("compactEnergyWidget", default: true, suite: AidenteRuntime.preferenceStore)
     static let activeStatusItemsOnly = Key<Bool>("activeStatusItemsOnly", default: true, suite: AidenteRuntime.preferenceStore)
     static let lastCalibrationCompleted = Key<Double>("lastCalibrationCompleted", default: 0, suite: AidenteRuntime.preferenceStore)
     static let scheduleHistoryData = Key<Data>("scheduleHistoryData", default: Data(), suite: AidenteRuntime.preferenceStore)

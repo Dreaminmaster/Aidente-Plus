@@ -60,6 +60,15 @@ struct AidenteReliefSurface: View {
     var body: some View {
         let dark = scheme == .dark
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        Group {
+            if material == .liquidGlass {
+                if #available(macOS 26.0, *) {
+                    shape.fill(.clear).glassEffect(.regular.interactive(), in: shape)
+                } else { compatibleSurface(shape, dark: dark) }
+            } else { compatibleSurface(shape, dark: dark) }
+        }.allowsHitTesting(false)
+    }
+    private func compatibleSurface(_ shape: RoundedRectangle, dark: Bool) -> some View {
         ZStack {
             if material != .solid {
                 AidenteVisualEffectView(material: material == .frosted ? .hudWindow : .popover, blendingMode: .withinWindow)
@@ -68,7 +77,6 @@ struct AidenteReliefSurface: View {
                 ? [Color(white: pressed ? 0.22 : 0.265), Color(white: 0.235), Color(white: 0.215)]
                 : [Color(white: pressed ? 0.88 : 0.97), Color(white: 0.925), Color(white: 0.88)], startPoint: .top, endPoint: .bottom))
                 .opacity(material == .solid ? 1 : material == .frosted ? 0.88 : material == .glass ? 0.66 : 0.44)
-            if material == .liquidGlass { AidenteLiquidGlassHighlights() }
         }
         .clipShape(shape)
         .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(dark ? 0.23 : 0.9), .white.opacity(0.04), .black.opacity(dark ? 0.40 : 0.16)], startPoint: .top, endPoint: .bottom), lineWidth: 0.7))
@@ -101,7 +109,7 @@ private struct LivePowerDiagram: View {
             let meter: CGFloat = min(70, max(52, width * 0.195))
             let sourceEnd = node + 4 + meter
             let macLeft = sourceEnd + (power.batteryInput > 0.01 || (power.batteryOutput > 0.01 && power.adapter > 0.01) ? max(34, width * 0.115) : 4)
-            let branchStart = macLeft + node + 4
+            let branchStart = macLeft + node - 0.5
             let end = width - node - 4
             let charging = power.batteryInput > 0.01
             let assisting = power.batteryOutput > 0.01 && power.adapter > 0.01
@@ -164,6 +172,7 @@ private struct LivePowerDiagram: View {
                             .position(x:sourceEnd/2,y:h/2)
                     }
                 }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.65), value: [power.adapter, power.batteryInput, power.batteryOutput] + parts.map { $0.1 })
         }.frame(height:128).padding(.vertical, 10)
     }
     private func destinationHeights(_ weights: [Double], available: CGFloat) -> [CGFloat] {
@@ -208,15 +217,20 @@ private struct RibbonShape: Shape {
         Path(RibbonGeometry(left:left,right:right,top:top,bottom:bottom,endTop:endTop,endBottom:endBottom).path)
     }
 }
-private struct PowerRibbon: View {
-    let left,right,top,bottom,endTop,endBottom:CGFloat
+private struct PowerRibbon: View, Animatable {
+    let left,right: CGFloat
+    var top,bottom,endTop,endBottom:CGFloat
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat,CGFloat>,AnimatablePair<CGFloat,CGFloat>> {
+        get { .init(.init(top,bottom),.init(endTop,endBottom)) }
+        set { top=newValue.first.first; bottom=newValue.first.second; endTop=newValue.second.first; endBottom=newValue.second.second }
+    }
     let tint:Color?
     let phase:Double?
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         if phase == nil {
-            NativeRibbon(left:left,right:right,top:top,bottom:bottom,endTop:endTop,endBottom:endBottom,tint:tint,dark:scheme == .dark,reducedMotion:reduceMotion)
+            NativeRibbon(left:left,right:right,top:top,bottom:bottom,endTop:endTop,endBottom:endBottom,tint:tint,dark:scheme == .dark,reducedMotion:reduceMotion,animateGeometry:false)
                 .frame(maxWidth:.infinity,maxHeight:.infinity).accessibilityHidden(true).allowsHitTesting(false)
         } else {
             fixture

@@ -9,7 +9,7 @@ module_cache_dir="$build_dir/ModuleCache"
 dist_dir="$project_dir/Dist"
 final_app_dir="$dist_dir/Aidente.app"
 app_dir="$build_dir/.packaging/Aidente.app"
-sdk="/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk"
+sdk=$(xcrun --sdk macosx --show-sdk-path)
 target="arm64-apple-macosx14.0"
 signing_identity="${AIDENTE_SIGNING_IDENTITY:--}"
 signing_options=(--timestamp=none)

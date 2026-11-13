@@ -66,17 +66,11 @@ struct AidenteMaterialLayer: View {
                 Color(nsColor: colorScheme == .dark ? .black : .white)
                     .opacity(colorScheme == .dark ? 0.62 : 0.42)
             case .liquidGlass:
-                AidenteVisualEffectView(
-                    material: .popover,
-                    blendingMode: .behindWindow
-                )
-                Color(
-                    red: 0.08,
-                    green: 0.10,
-                    blue: 0.12
-                )
-                .opacity(colorScheme == .dark ? 0.46 : 0.045)
-                AidenteLiquidGlassHighlights()
+                if #available(macOS 26.0, *) {
+                    Color.clear
+                } else {
+                    AidenteVisualEffectView(material: .popover, blendingMode: .behindWindow)
+                }
             }
         }
     }
@@ -84,85 +78,6 @@ struct AidenteMaterialLayer: View {
 
 struct AidenteWindowBackdrop: View {
     var body: some View { AidenteMaterialLayer().ignoresSafeArea() }
-}
-
-struct AidenteLiquidGlassHighlights: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Ellipse()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                Color.white.opacity(
-                                    colorScheme == .dark ? 0.13 : 0.42
-                                ),
-                                Color.clear,
-                            ],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: max(geometry.size.width, 1) * 0.58
-                        )
-                    )
-                    .frame(
-                        width: geometry.size.width * 0.92,
-                        height: max(geometry.size.height * 0.36, 44)
-                    )
-                    .offset(
-                        x: -geometry.size.width * 0.22,
-                        y: -geometry.size.height * 0.34
-                    )
-                    .blur(radius: 9)
-
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(
-                            colorScheme == .dark ? 0.12 : 0.38
-                        ),
-                        AidenteTheme.sky.opacity(0.055),
-                        Color.clear,
-                        AidenteTheme.violet.opacity(0.045),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .blendMode(.plusLighter)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-struct AidenteChromeBar: View {
-    @Default(.interfaceMaterialStyle) private var materialStyle
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        ZStack {
-            if materialStyle == .liquidGlass {
-                AidenteVisualEffectView(
-                    material: .sidebar,
-                    blendingMode: .withinWindow
-                )
-                Color(
-                    red: 0.075,
-                    green: 0.085,
-                    blue: 0.10
-                )
-                .opacity(colorScheme == .dark ? 0.76 : 0.34)
-                AidenteLiquidGlassHighlights()
-            } else {
-                Color(
-                    red: 0.095,
-                    green: 0.09,
-                    blue: 0.085
-                )
-                .opacity(0.98)
-            }
-        }
-    }
 }
 
 struct AidenteSettingsBackground: View {
