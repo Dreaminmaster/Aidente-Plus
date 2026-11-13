@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_CN</string>
+    <key>CFBundleDisplayName</key>
+    <string>Aidente</string>
+    <key>CFBundleExecutable</key>
+    <string>Aidente</string>
+    <key>CFBundleIconFile</key>
+    <string>Aidente</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.aidente.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Aidente</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>6.1</string>
+    <key>CFBundleVersion</key>
+    <string>21</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.aidente.app.automation</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>aidente</string>
+            </array>
+        </dict>
+    </array>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>GPL-3.0 开源软件，与 AppHouseKitchen 无隶属关系。</string>
+</dict>
+</plist>

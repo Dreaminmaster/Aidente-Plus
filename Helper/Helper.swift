@@ -1,0 +1,96 @@
+import Foundation
+import AidenteShared
+import os.log
+import smc_power
+
+private enum Constants {
+    static let helperSubsystem = "com.aidente.app.reader"
+}
+
+final class Helper: NSObject, AidenteReaderProtocol {
+    private let logger = Logger(
+        subsystem: Constants.helperSubsystem,
+        category: "Helper"
+    )
+
+    func readComponentPower(reply: @escaping @Sendable (String) -> Void) {
+        let data = try? JSONEncoder().encode(ComponentPowerSensors.read())
+        reply(data.flatMap { String(data: $0, encoding: .utf8) } ?? "")
+    }
+
+    func readBatteryTemperature(reply: @escaping @Sendable (Double) -> Void) {
+        reply((try? SMCBattery.temperatureCelsius()) ?? .nan)
+    }
+
+    func readBatteryMetrics(
+        reply: @escaping @Sendable (Double, Double, Double) -> Void
+    ) {
+        do {
+            let batteryVoltage = try SMCBattery.getVoltage()
+            let batteryCurrent = try SMCBattery.getCurrent()
+            let batteryPower = batteryVoltage * batteryCurrent
+
+            reply(batteryVoltage, batteryCurrent, batteryPower)
+        } catch {
+            logger.error("SMC battery read failed: \(error.localizedDescription)")
+            reply(0, 0, 0)
+        }
+    }
+
+    func readAdapterMetrics(
+        reply: @escaping @Sendable (Double, Double, Double) -> Void
+    ) {
+        do {
+            var adapterVoltage = try SMCAdapter.getVoltage()
+            var adapterCurrent = try SMCAdapter.getCurrent()
+
+            if abs(adapterVoltage) < 0.1 { adapterVoltage = 0 }
+            if abs(adapterCurrent) < 0.1 { adapterCurrent = 0 }
+
+            let adapterPower = adapterVoltage * adapterCurrent
+
+            reply(adapterVoltage, adapterCurrent, adapterPower)
+        } catch {
+            logger.error("SMC adapter read failed: \(error.localizedDescription)")
+            reply(0, 0, 0)
+        }
+    }
+
+    func nativeChargeLimits(reply: @escaping @Sendable (String) -> Void) {
+        guard let battery = try? SMCBattery.probe(), !battery.capabilities.inhibitChargeControl,
+              let native = try? NativeChargeLimit(), let limits = try? native.availableLimits() else { reply(""); return }
+        reply(limits.map(String.init).joined(separator: ","))
+    }
+
+    func getCapabilities(reply: @escaping @Sendable (Bool, Bool, Bool, Bool) -> Void) {
+        do {
+            let battery = try SMCBattery.probe()
+            let adapter = try SMCAdapter.probe()
+            let capabilities = DeviceCapabilities.from(
+                battery: battery.capabilities,
+                adapter: adapter.capabilities
+            )
+            logger.notice("CHARGING_BACKEND \(battery.chargingControlKey, privacy: .public)")
+            if battery.usesFirmwareChargeLimit {
+                do {
+                    let limits = try FirmwareChargeLimitController(registers: SMCFirmwareLimitRegisters()).read()
+                    logger.notice("FIRMWARE_LIMIT active=\(limits.activation) lower=\(limits.lower) upper=\(limits.upper)")
+                } catch {
+                    logger.error("FIRMWARE_LIMIT_READ_FAILED \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            logger.info(
+                "Probed capabilities (charging=\(capabilities.chargingControl), adapter=\(capabilities.adapterControl), magSafe=\(capabilities.hasMagSafe))"
+            )
+            reply(
+                capabilities.chargingControl || ((try? NativeChargeLimit().availableLimits().isEmpty) == false),
+                capabilities.adapterControl || ((try? NativeChargeLimit().availableLimits().isEmpty) == false),
+                capabilities.hasMagSafe,
+                capabilities.magsafeLEDControl
+            )
+        } catch {
+            logger.error("Failed to probe capabilities: \(error.localizedDescription)")
+            reply(false, false, false, false)
+        }
+    }
+}
