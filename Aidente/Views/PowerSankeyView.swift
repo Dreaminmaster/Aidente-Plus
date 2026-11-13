@@ -1,5 +1,6 @@
 import AidenteShared
 import SwiftUI
+import Defaults
 
 struct PowerSankeyView: View {
     let powerSource: PowerSource
@@ -52,17 +53,26 @@ struct PowerSankeyView: View {
 
 /// Layered highlights and shadows give neutral controls a shallow, raised surface.
 struct AidenteReliefSurface: View {
+    @Default(.interfaceMaterialStyle) private var material
     @Environment(\.colorScheme) private var scheme
     var cornerRadius: CGFloat = 15
     var pressed = false
     var body: some View {
         let dark = scheme == .dark
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        shape.fill(LinearGradient(colors: dark
-            ? [Color(white: pressed ? 0.23 : 0.28), Color(white: 0.25), Color(white: 0.235)]
-            : [Color(white: pressed ? 0.88 : 0.97), Color(white: 0.91), Color(white: 0.87)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(dark ? 0.21 : 0.9), .white.opacity(0.03), .black.opacity(dark ? 0.40 : 0.16)], startPoint: .top, endPoint: .bottom), lineWidth: 0.7))
-            .shadow(color: .black.opacity(dark ? 0.28 : 0.09), radius: pressed ? 1 : 3, x: 0, y: pressed ? 0.5 : 2)
+        ZStack {
+            if material != .solid {
+                AidenteVisualEffectView(material: material == .frosted ? .hudWindow : .popover, blendingMode: .withinWindow)
+            }
+            shape.fill(LinearGradient(colors: dark
+                ? [Color(white: pressed ? 0.22 : 0.265), Color(white: 0.235), Color(white: 0.215)]
+                : [Color(white: pressed ? 0.88 : 0.97), Color(white: 0.925), Color(white: 0.88)], startPoint: .top, endPoint: .bottom))
+                .opacity(material == .solid ? 1 : material == .frosted ? 0.88 : material == .glass ? 0.66 : 0.44)
+            if material == .liquidGlass { AidenteLiquidGlassHighlights() }
+        }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(dark ? 0.23 : 0.9), .white.opacity(0.04), .black.opacity(dark ? 0.40 : 0.16)], startPoint: .top, endPoint: .bottom), lineWidth: 0.7))
+        .shadow(color: .black.opacity(dark ? 0.24 : 0.09), radius: pressed ? 1 : 3, x: 0, y: pressed ? 0.5 : 2)
             .allowsHitTesting(false)
     }
 }

@@ -4,7 +4,7 @@ import SwiftUI
 enum BatteryIndicatorLayout {
     static let bodyWidth: CGFloat = 16
     static let bodyHeight: CGFloat = 10
-    static let insideBodyWidth: CGFloat = 22
+    static let insideBodyWidth: CGFloat = 25
     static let insideBodyHeight: CGFloat = 12
     static let terminalWidth: CGFloat = 1.5
     static let terminalHeight: CGFloat = 4
@@ -71,9 +71,7 @@ struct BatteryIndicatorView: View {
                 }
             } else if style == .appIcon {
                 HStack(spacing: 3) {
-                    if style == .status && chargingMode == .pluggedIn {
-                        BatteryPlugGlyph().stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)).frame(width: 15, height: 16)
-                    } else { Image(systemName: statusSymbol).font(.system(size: 15, weight: .medium)) }
+                    Image(systemName: statusSymbol).font(.system(size: 15, weight: .medium))
                     if percentageDisplayLocation != .hidden {
                         Text("\(batteryLevel)%").font(.system(size: 11)).monospacedDigit().lineLimit(1).fixedSize()
                     }
@@ -98,7 +96,7 @@ struct BatteryIndicatorView: View {
             HStack(spacing: 2) {
                 if chargingMode == .charging { Image(systemName: "bolt.fill").font(.system(size: 9)) }
                 else if chargingMode == .pluggedIn {
-                    BatteryPlugGlyph().stroke(style: StrokeStyle(lineWidth: 1.1, lineCap: .round, lineJoin: .round))
+                    Image(systemName: "powerplug.portrait.fill").resizable().scaledToFit()
                         .frame(width: 6, height: 9)
                 } else { Image(systemName: adapterConnected ? "minus" : "chevron.down").font(.system(size: 7, weight: .bold)) }
                 ForEach(0..<3) { bar in
@@ -166,6 +164,7 @@ struct BatteryIndicatorView: View {
             GeometryReader { geo in
                 Rectangle()
                     .fill(fillColor)
+                    .clipShape(RoundedRectangle(cornerRadius: roundedStyle ? 2.5 : 0))
                     .frame(width: fillWidth(usableWidth: geo.size.width))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .animation(Layout.levelAnimation, value: batteryLevel)
@@ -200,7 +199,7 @@ struct BatteryIndicatorView: View {
     private var insideContent: some View {
         HStack(spacing: style == .macOS27 ? 0 : 0.5) {
             Text(verbatim: "\(batteryLevel)")
-                .font(.system(size: batteryLevel >= 100 ? (chargingMode == .pluggedIn ? 7.1 : 8.2) : 9, weight: style == .macOS27 ? .medium : .semibold))
+                .font(.system(size: batteryLevel >= 100 ? (chargingMode == .pluggedIn ? 8 : 9) : 10.5, weight: .semibold))
                 .monospacedDigit()
                 .fixedSize()
             chargingGlyph
@@ -213,11 +212,10 @@ struct BatteryIndicatorView: View {
     private var chargingGlyph: some View {
         if chargingMode == .charging {
             Image(systemName: "bolt.fill")
-                .resizable().scaledToFit().frame(width: 3.5, height: 6)
+                .resizable().scaledToFit().frame(width: 4, height: 8)
         } else if chargingMode == .pluggedIn {
-            BatteryPlugGlyph()
-                .stroke(style: StrokeStyle(lineWidth: 0.85, lineCap: .round, lineJoin: .round))
-                .frame(width: 5.5, height: 7)
+            Image(systemName: "powerplug.portrait.fill")
+                .resizable().scaledToFit().frame(width: 5.5, height: 8)
         }
     }
 }

@@ -132,7 +132,7 @@ enum InterfaceMaterialStyle: String, Defaults.Serializable, CaseIterable, Identi
         case .glass: AidenteL10n.t("平衡透明度与清晰度")
         case .frosted: AidenteL10n.t("更明显的背景虚化")
         case .liquidGlass:
-            AidenteL10n.t("适配 macOS 26/27，旧系统自动使用兼容效果")
+            AidenteL10n.t("兼容的玻璃高光与半透明效果")
         }
     }
 

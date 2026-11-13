@@ -201,7 +201,7 @@ struct DashboardPopoverView: View {
                 .onLongPressGesture(minimumDuration: 0.5) { editor.isEditing = true }
         }
         .frame(width: 402, height: PopoverLayout.height(widgets: widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive))
-        .background(LinearGradient(colors: scheme == .dark ? [Color(white: 0.145), Color(white: 0.105)] : [Color(white: 0.97), Color(white: 0.94)], startPoint: .top, endPoint: .bottom))
+        .background(AidenteMaterialLayer())
         .tint(.accentColor)
         .disabled(CompleteUninstaller.shared.isRunning)
         .onAppear { draft = Double(viewModel.effectiveChargeLimit) }
@@ -267,7 +267,10 @@ struct DashboardPopoverView: View {
 
 struct EnergyAppsWidget: View {
     let viewModel: MenuViewModel
-    @State private var quitting: String?
+    @State private var quitting: AppEnergyUsageSnapshot?
+    @State private var showingQuitConfirmation = false
+    @State private var forceQuit = false
+    private let quitService = AppQuitService.shared
     @State private var hoveredApp: String?
     @State private var hoveringList = false
     @State private var interactionID = UUID()
@@ -299,10 +302,31 @@ struct EnergyAppsWidget: View {
                         Text(app.measurementText).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                             .help(app.estimatedWatts == nil ? "暂未取得完整进程能量采样，显示近期平滑后的 CPU 活动；短暂波动不会立即增删条目。" : "由系统进程能量计数计算的近期平滑功率估算，不包含可完整归属的所有 GPU、屏幕或外设能耗。暂缺读数最多保留6秒；持续低用量后移除。")
                         if !app.isBackground {
-                            Button { quitting = app.bundlePath } label: { Text(AidenteL10n.t("退出", "Quit")).font(.caption2).frame(width: 32) }.buttonStyle(.borderless).help(AidenteL10n.t("退出 App", "Quit App"))
-                                .opacity(hoveredApp == app.bundlePath ? 1 : 0)
-                                .accessibilityLabel(AidenteL10n.t("退出 ", "Quit ") + app.name)
-                                .disabled(AidenteRuntime.isUIPreview)
+                            if let state = quitService.states[app.bundlePath] {
+                                if state == .requesting {
+                                    ProgressView().controlSize(.mini).frame(width: 32)
+                                        .help(AidenteL10n.t("已发送退出请求，正在等待应用关闭。", "Quit requested; waiting for the app to close."))
+                                } else {
+                                    Menu {
+                                        Text(AidenteL10n.t("应用仍在运行，可能正在等待保存或取消了退出。", "The app is still running; it may be waiting for you to save or may have declined quitting."))
+                                        Button(AidenteL10n.t("查看应用", "Show App")) { quitService.showApplication(path: app.bundlePath) }
+                                        Button(AidenteL10n.t("重试退出", "Retry Quit")) { quitService.request(path: app.bundlePath) }
+                                        Button(AidenteL10n.t("强制退出…", "Force Quit…"), role: .destructive) {
+                                            quitting = app; forceQuit = true; showingQuitConfirmation = true
+                                        }
+                                    } label: { Image(systemName: "exclamationmark.circle") }
+                                        .menuStyle(.borderlessButton).fixedSize()
+                                        .accessibilityLabel(AidenteL10n.t("仍在运行：", "Still running: ") + app.name)
+                                }
+                            } else {
+                                Button {
+                                    quitting = app; forceQuit = false; showingQuitConfirmation = true
+                                } label: { Text(AidenteL10n.t("退出", "Quit")).font(.caption2).frame(width: 32) }
+                                    .buttonStyle(.borderless)
+                                    .opacity(hoveredApp == app.bundlePath ? 1 : 0)
+                                    .accessibilityLabel(AidenteL10n.t("退出 ", "Quit ") + app.name)
+                                    .disabled(AidenteRuntime.isUIPreview)
+                            }
                         }
                     }.onHover { hovering in hoveredApp = hovering ? app.bundlePath : nil }
                 }
@@ -310,16 +334,20 @@ struct EnergyAppsWidget: View {
         }.frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
         .onHover { hovering in
             hoveringList = hovering
-            AppListInteractionState.shared.update(interactionID, active: hovering || quitting != nil)
+            AppListInteractionState.shared.update(interactionID, active: hovering || showingQuitConfirmation)
         }
-        .onChange(of: quitting) { _, value in AppListInteractionState.shared.update(interactionID, active: hoveringList || value != nil) }
+        .onChange(of: showingQuitConfirmation) { _, value in AppListInteractionState.shared.update(interactionID, active: hoveringList || value) }
         .onDisappear { AppListInteractionState.shared.update(interactionID, active: false) }
-        .confirmationDialog(AidenteL10n.t("退出此 App？未保存的内容可能需要处理。", "Quit this app? You may need to save your work."), isPresented: Binding(get: { quitting != nil }, set: { if !$0 { quitting = nil } })) {
-            Button(AidenteL10n.t("退出", "Quit")) {
-                guard let path = quitting else { return }; quitting = nil
-                for app in NSWorkspace.shared.runningApplications where app.bundleURL?.path == path { _ = app.terminate() }
+        .alert(forceQuit ? AidenteL10n.t("强制退出 App？", "Force quit app?") : AidenteL10n.t("退出 App？", "Quit app?"),
+               isPresented: $showingQuitConfirmation, presenting: quitting) { app in
+            Button(forceQuit ? AidenteL10n.t("强制退出", "Force Quit") : AidenteL10n.t("退出", "Quit"), role: forceQuit ? .destructive : nil) {
+                quitService.request(path: app.bundlePath, force: forceQuit)
             }
-            Button(AidenteL10n.t("取消", "Cancel"), role: .cancel) { quitting = nil }
+            Button(AidenteL10n.t("取消", "Cancel"), role: .cancel) { }
+        } message: { app in
+            Text(app.name + "\n" + (forceQuit
+                ? AidenteL10n.t("未保存的内容会丢失。", "Unsaved changes will be lost.")
+                : AidenteL10n.t("应用可能要求你保存内容。若未退出，列表会提供查看和重试入口。", "The app may ask you to save. If it stays open, the list will offer Show App and Retry.")))
         }
     }
 }

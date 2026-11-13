@@ -56,20 +56,15 @@ struct AidenteMaterialLayer: View {
                         : NSColor(calibratedWhite: 0.975, alpha: 1)
                 )
             case .glass:
-                Rectangle()
-                    .fill(.regularMaterial)
-                Color.black.opacity(colorScheme == .dark ? 0.04 : 0.01)
+                AidenteVisualEffectView(material: .popover, blendingMode: .behindWindow)
+                Color(nsColor: colorScheme == .dark ? .black : .white).opacity(colorScheme == .dark ? 0.55 : 0.16)
             case .frosted:
                 AidenteVisualEffectView(
                     material: .hudWindow,
                     blendingMode: .behindWindow
                 )
-                Color(
-                    red: 0.065,
-                    green: 0.052,
-                    blue: 0.043
-                )
-                .opacity(colorScheme == .dark ? 0.58 : 0.08)
+                Color(nsColor: colorScheme == .dark ? .black : .white)
+                    .opacity(colorScheme == .dark ? 0.62 : 0.42)
             case .liquidGlass:
                 AidenteVisualEffectView(
                     material: .popover,
@@ -80,7 +75,7 @@ struct AidenteMaterialLayer: View {
                     green: 0.10,
                     blue: 0.12
                 )
-                .opacity(colorScheme == .dark ? 0.26 : 0.045)
+                .opacity(colorScheme == .dark ? 0.46 : 0.045)
                 AidenteLiquidGlassHighlights()
             }
         }
@@ -88,13 +83,7 @@ struct AidenteMaterialLayer: View {
 }
 
 struct AidenteWindowBackdrop: View {
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        LinearGradient(colors: scheme == .dark
-            ? [Color(white: 0.16), Color(white: 0.115)]
-            : [.white, Color(white: 0.94)], startPoint: .top, endPoint: .bottom)
-            .ignoresSafeArea()
-    }
+    var body: some View { AidenteMaterialLayer().ignoresSafeArea() }
 }
 
 struct AidenteLiquidGlassHighlights: View {
@@ -417,7 +406,7 @@ struct UtilitySurface<Content: View>: View {
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         content.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(scheme == .dark ? Color(white: 0.20) : .white, in: RoundedRectangle(cornerRadius: 22))
+            .background(AidenteReliefSurface(cornerRadius: 22))
             .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.primary.opacity(0.06)))
             .shadow(color: .black.opacity(scheme == .dark ? 0.12 : 0.065), radius: 9, y: 3)
     }

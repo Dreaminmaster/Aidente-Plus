@@ -256,6 +256,8 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self, weak panel] event in
             MainActor.assumeIsolated {
                 if let window = event.window, window !== panel,
+                   window.sheetParent !== panel, window.parent !== panel,
+                   panel?.attachedSheet == nil,
                    window !== self?.statusItem.button?.window, window.level < .popUpMenu {
                     self?.dismissMenu()
                 }
