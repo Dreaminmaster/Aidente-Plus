@@ -129,6 +129,7 @@ struct DiagnosticsSettingsView: View {
                         diagnosticItem("Aidente 统一日志（最近 1 小时或本次记录）")
                         diagnosticItem("软件、macOS、机型与后台服务状态")
                         diagnosticItem("电池、适配器及充电控制快照")
+                        diagnosticItem("系统原生充电上限的只读状态（可用时）")
                         diagnosticItem("经过筛选的充电设置，不包含完整偏好数据")
                         diagnosticItem("用户名、路径、网络地址、序列号自动脱敏")
                     }

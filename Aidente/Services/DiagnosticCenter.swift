@@ -1,5 +1,6 @@
 import AppKit
 import AidenteShared
+import smc_power
 import Darwin
 import Defaults
 import Foundation
@@ -11,6 +12,7 @@ private struct DiagnosticExportInputs: Sendable {
     let supportIdentifier: String
     let logWindowMinutes: Int
     let systemReport: String
+    let nativeChargeReport: String
     let batteryReport: String
     let preferencesReport: String
     let energyReport: String?
@@ -325,12 +327,29 @@ final class DiagnosticCenter {
             supportIdentifier: Defaults[.diagnosticSessionID],
             logWindowMinutes: logWindowMinutes,
             systemReport: makeSystemReport(),
+            nativeChargeReport: await Self.readNativeChargeReport(),
             batteryReport: makeBatteryReport(),
             preferencesReport: makePreferencesReport(),
             energyReport: energyReport,
             includeCrashReports: includeCrashReports,
             destinationURL: destinationURL
         )
+    }
+
+    private nonisolated static func readNativeChargeReport() async -> String {
+        await Task.detached(priority: .utility) {
+            let report: [String: Any]
+            do {
+                let state = try NativeChargeLimit().read()
+                report = ["available": true, "limit": state.limit, "enabled": state.enabled,
+                    "readOnly": true, "note": "System policy observation; no settings were changed."]
+            } catch {
+                report = ["available": false, "readOnly": true,
+                    "error": Self.sanitize(error.localizedDescription)]
+            }
+            let data = (try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])) ?? Data()
+            return String(decoding: data, as: UTF8.self)
+        }.value
     }
 
     private func makeSystemReport() -> String {
@@ -376,6 +395,8 @@ final class DiagnosticCenter {
         let adapter = batteryService.adapterMetrics
         let report: [String: Any] = [
             "controlPolicy": chargeManager.controlDiagnostics,
+            "controlBackend": batteryService.usesNativeChargeLimit ? "nativeChargeLimit" : batteryService.deviceCapabilities.chargingControl ? "smcControl" : "unavailable",
+            "powerSampleAgeSeconds": batteryService.lastPowerSampleDate.map { Date().timeIntervalSince($0) } ?? -1,
             "timestamp": ISO8601DateFormatter().string(from: Date()),
             "battery": [
                 "displayedPercentage": metrics.batteryPercentage,
@@ -412,6 +433,7 @@ final class DiagnosticCenter {
             ],
             "chargingControl": [
                 "operation": chargeManager.operationStatusTitle,
+                "requestedOperation": chargeManager.operationStatus.title,
                 "manualPauseActive": chargeManager.manualPauseActive,
                 "topUpActive": chargeManager.topUpActive,
                 "forceDischargeActive": chargeManager.forceDischargeActive,
@@ -498,6 +520,7 @@ final class DiagnosticCenter {
             inputs.systemReport,
             to: packageDirectory.appendingPathComponent("system.txt")
         )
+        try writeText(inputs.nativeChargeReport, to: packageDirectory.appendingPathComponent("system-charge-limit.json"))
         try writeText(
             inputs.batteryReport,
             to: packageDirectory.appendingPathComponent("battery-and-control.json")

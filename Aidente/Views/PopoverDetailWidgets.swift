@@ -105,6 +105,10 @@ struct PopoverStatusExplanation: View {
             return AidenteL10n.t("充电已暂停，允许电量自然浮动；降至\(max(20, limit - sailingRange))%时恢复充电，充至\(limit)%再暂停。", "Charging paused. It resumes at \(max(20, limit - sailingRange))% and stops again at \(limit)%.")
         }
         if viewModel.powerFlowPending {
+            if viewModel.chargeResumeRequested {
+                return AidenteL10n.t("已请求充至\(limit)%，但尚未确认电池实际充电。请检查 macOS 电池设置中是否另有上限或暂停状态。",
+                    "Charging to \(limit)% was requested, but battery charging is not confirmed. Check for another charge limit or hold in macOS Battery settings.")
+            }
             if viewModel.isCharging {
                 return AidenteL10n.t("已请求暂停，但电池目前仍在充电；目标为\(limit)%，等待系统执行并确认保持。",
                     "Hold requested, but the battery is still charging. Target \(limit)%; waiting for macOS to apply and confirm the hold.")

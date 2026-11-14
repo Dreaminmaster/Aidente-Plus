@@ -100,6 +100,7 @@ class MenuViewModel {
     var calibrationActive: Bool { chargeManager.calibrationStage != .idle || systemCalibrationActive }
     var operationStatusText: String { chargeManager.operationStatusTitle }
     var powerFlowPending: Bool { chargeManager.powerFlowPending }
+    var chargeResumeRequested: Bool { chargeManager.chargeResumeRequested }
     var controlErrorText: String? { chargeManager.controlError }
     var hasControlError: Bool { chargeManager.controlError != nil }
     var manageChargingEnabled: Bool { Defaults[.manageCharging] }
