@@ -94,8 +94,8 @@ struct PopoverStatusExplanation: View {
         if viewModel.chargeLimitOverrideActive {
             return AidenteL10n.t("正在临时充至100%，拔掉电源或停止后恢复原充电上限。", "Temporarily charging to 100%. Unplug or stop Top Up to restore your limit.")
         }
-        if viewModel.forceDischargeActive {
-            return AidenteL10n.t("正在向设定上限放电；电量读数异常时会停止并恢复原设置。", "Discharging toward the limit. Invalid or stalled readings trigger a safe stop and restoration.")
+        if viewModel.dischargeRequested {
+            return viewModel.operationStatusText
         }
         if viewModel.heatProtectionActive {
             return AidenteL10n.t("充电因温度保护暂停；降温并满足保护等待时间后恢复。", "Charging paused for heat protection. It resumes after cooling and the protection interval.")
@@ -106,6 +106,7 @@ struct PopoverStatusExplanation: View {
         if viewModel.isCharging {
             return AidenteL10n.t("电源正在为电脑供电并给电池充电，达到\(limit)%后将请求保持。", "The adapter powers your Mac and charges the battery. A hold is requested at \(limit)%.")
         }
+        if viewModel.powerFlowPending { return viewModel.operationStatusText }
         return AidenteL10n.t("充电已暂停，当前上限为\(limit)%。电脑优先使用适配器供电，瞬时负载较大时电池仍可能辅助供电。", "Charging paused at a \(limit)% limit. The adapter supplies power; the battery may assist during brief high loads.")
     }
     var body: some View {
@@ -113,7 +114,11 @@ struct PopoverStatusExplanation: View {
             HStack {
                 Text(AidenteL10n.t("当前是什么状态？", "What's going on?")).font(.caption.weight(.semibold))
                 Spacer()
-                Image(systemName: viewModel.adapterConnected ? "powerplug.fill" : "battery.50percent")
+                HStack(spacing: 6) {
+                    ForEach(Array(viewModel.observedStatusSymbols.enumerated()), id: \.offset) { _, symbol in
+                        Image(systemName: symbol)
+                    }
+                }.accessibilityLabel(viewModel.operationStatusText)
             }
             Text(explanation).font(.caption).fixedSize(horizontal: false, vertical: true)
         }

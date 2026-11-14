@@ -141,11 +141,20 @@ public struct ChargeHoldVerification {
     private var last: Result = .pending
     private var count = 0
     public init() {}
-    public mutating func sample(batteryPower: Double) -> Result {
+    public mutating func sample(batteryPower: Double, isCharging: Bool = false) -> Result {
         guard batteryPower.isFinite else { self = Self(); return .pending }
-        let state: Result = batteryPower > 1 ? .charging : batteryPower < -1 ? .discharging : .held
+        let state: Result = isCharging || batteryPower > 1 ? .charging : batteryPower < -1 ? .discharging : .held
         count = state == last ? count + 1 : 1
         last = state
         return count >= 3 ? state : .pending
+    }
+}
+
+/// Manual discharge follows the visible limit; raising it to the current level
+/// ends the request instead of keeping a hidden, older discharge destination.
+public enum DischargeRequestPolicy {
+    public static func target(limit: Int, percentage: Int) -> Int? {
+        let limit = min(100, max(20, limit))
+        return percentage > limit ? limit : nil
     }
 }

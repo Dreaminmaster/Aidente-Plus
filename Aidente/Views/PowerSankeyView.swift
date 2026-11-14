@@ -36,6 +36,10 @@ struct PowerSankeyView: View {
             }.buttonStyle(.plain).help(AidenteL10n.t("展开芯片、显示屏和 USB 的功率读数与说明", "Expand component readings and explanations"))
             if expanded {
                 let parts = components?.breakdown(total: power.computer)
+                if parts?.prefix(3).allSatisfy({ $0 == nil }) ?? true {
+                    Text(AidenteL10n.t("此机型暂无已验证的硬件分项，仅显示实测整机流向。", "Verified component sensors are unavailable on this Mac; only measured whole-system flows are shown."))
+                        .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 ForEach(0..<4) { index in
                     HStack {
                         Text(["SoC", AidenteL10n.t("显示屏", "Display"), "USB", AidenteL10n.t("其他", "Other")][index])

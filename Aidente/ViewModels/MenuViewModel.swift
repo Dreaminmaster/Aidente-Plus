@@ -73,9 +73,21 @@ class MenuViewModel {
     }
     var chargeLimitOverrideActive: Bool { chargeManager.chargeLimitOverrideActive }
     var forceDischargeActive: Bool { chargeManager.forceDischargeActive }
+    var dischargeRequested: Bool {
+        if case .discharging = chargeManager.operationStatus { return true }
+        return false
+    }
+    var observedStatusSymbols: [String] {
+        if hasControlError { return ["exclamationmark.triangle"] }
+        if !adapterConnected { return ["battery.50percent"] }
+        if isCharging { return ["powerplug.fill", "bolt.fill"] }
+        if batteryPower < -1 { return ["powerplug.fill", "battery.50percent"] }
+        return ["powerplug.fill", "pause.fill"]
+    }
     var manualPauseActive: Bool { chargeManager.manualPauseActive }
     var calibrationActive: Bool { chargeManager.calibrationStage != .idle || systemCalibrationActive }
     var operationStatusText: String { chargeManager.operationStatusTitle }
+    var powerFlowPending: Bool { chargeManager.powerFlowPending }
     var controlErrorText: String? { chargeManager.controlError }
     var hasControlError: Bool { chargeManager.controlError != nil }
     var manageChargingEnabled: Bool { Defaults[.manageCharging] }

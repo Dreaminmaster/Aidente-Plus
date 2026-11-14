@@ -132,6 +132,7 @@ class ChargeManager {
     }
     private var powerFlowError: String?
     private var powerHoldVerified = false
+    private var powerDischargeVerified = false
 
     var controlError: String? {
         if !safetyStopReason.isEmpty { return safetyStopReason }
@@ -142,10 +143,22 @@ class ChargeManager {
         }
         return AidenteL10n.controlError(rawError)
     }
+    var powerFlowPending: Bool {
+        guard let request = pendingPowerRequest, request.managed,
+              batteryService.adapterMetrics.adapterConnected else { return false }
+        let fresh = batteryService.lastPowerSampleDate.map { Date().timeIntervalSince($0) < 15 } ?? false
+        if !request.adapter {
+            return appliedPowerRequest != request || !powerDischargeVerified || !fresh
+                || batteryService.metrics.isCharging || batteryService.metrics.batteryPower >= -1
+        }
+        return !request.charging && (!powerHoldVerified || !fresh || appliedPowerRequest != request)
+    }
     var operationStatusTitle: String {
         if controlError != nil { return AidenteL10n.t("充电控制未生效") }
-        if let request = pendingPowerRequest, request.managed, !request.charging,
-           request.adapter, batteryService.adapterMetrics.adapterConnected, !powerHoldVerified {
+        if case .discharging(let target) = operationStatus, powerFlowPending {
+            return AidenteL10n.t("放电至 \(target)% · 等待实际功率确认", "Discharge to \(target)% · Verifying power flow")
+        }
+        if let request = pendingPowerRequest, request.adapter, powerFlowPending {
             return AidenteL10n.t("暂停供电状态待确认", "Verifying charging hold and power flow")
         }
         if operationStatus == .monitoring, Defaults[.manageCharging],
@@ -366,9 +379,10 @@ class ChargeManager {
             )
             operationStatus = .topUp
         } else if forceDischargeActive {
-            let target = min(max(Defaults[.forcedDischargeTarget], 20), 100)
+            let target = min(max(chargeLimit, 20), 100)
+            Defaults[.forcedDischargeTarget] = target
             desiredCharging = false
-            if batteryPercentage > target {
+            if DischargeRequestPolicy.target(limit: target, percentage: batteryPercentage) != nil {
                 desiredAdapter = false
                 operationStatus = .discharging(target: target)
                 chargingStateReason = AidenteL10n.t(
@@ -571,6 +585,7 @@ class ChargeManager {
                 lowLevel: Defaults[.calibrationLowLevel], originalLimit: Defaults[.calibrationOriginalLimit])
             : standardCeiling
         let range = normalLimit && Defaults[.sailingMode] ? max(2, Defaults[.sailingModeLimit]) : 2
+        let previousRequest = pendingPowerRequest
         pendingPowerRequest = PowerRequest(
             charging: charging, adapter: adapter, managed: managed,
             stopWhileSleeping: Defaults[.stopChargingWhileSleeping],
@@ -578,6 +593,10 @@ class ChargeManager {
             followNaturalDrift: normalLimit && Defaults[.sailingMode] && !manualPauseActive && !heatProtectionPaused,
             chargeCeiling: ceiling, rechargeBelow: max(0, min(ceiling - 1, max(20, ceiling - range)))
         )
+        if pendingPowerRequest != previousRequest {
+            powerDischargeVerified = false
+            powerFlowError = nil
+        }
         guard powerTask == nil else { return }
         guard pendingPowerRequest != appliedPowerRequest
             || Date().timeIntervalSince(lastPowerApplication) >= 30 else { return }
@@ -635,10 +654,12 @@ class ChargeManager {
         verificationTask?.cancel()
         powerFlowError = nil
         powerHoldVerified = preserveVerifiedHold
-        guard request.managed, !request.charging, request.adapter else { return }
+        powerDischargeVerified = false
+        guard request.managed, !request.charging else { return }
         verificationTask = Task { [weak self] in
             var verification = ChargeHoldVerification()
             var lastSample: Date?
+            let started = Date()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(8)) } catch { return }
                 guard let self, pendingPowerRequest == request, !isSystemSleeping else { return }
@@ -647,6 +668,7 @@ class ChargeManager {
                 guard batteryService.adapterMetrics.adapterConnected else {
                     verification = ChargeHoldVerification()
                     powerHoldVerified = false
+                    powerDischargeVerified = false
                     powerFlowError = nil
                     continue
                 }
@@ -654,10 +676,32 @@ class ChargeManager {
                       sampleDate != lastSample, Date().timeIntervalSince(sampleDate) < 15 else {
                     verification = ChargeHoldVerification()
                     powerHoldVerified = false
+                    powerDischargeVerified = false
+                    if Date().timeIntervalSince(started) > 30 {
+                        powerFlowError = AidenteL10n.t("未取得新近电池功率，无法确认充电控制是否生效。", "No fresh battery power sample; charging control cannot be confirmed.")
+                    }
                     continue
                 }
                 lastSample = sampleDate
-                switch verification.sample(batteryPower: batteryService.metrics.batteryPower) {
+                if !request.adapter {
+                    let outcome = verification.sample(batteryPower: batteryService.metrics.batteryPower,
+                        isCharging: batteryService.metrics.isCharging)
+                    powerDischargeVerified = outcome == .discharging
+                    switch outcome {
+                    case .pending: break
+                    case .discharging: powerFlowError = nil
+                    case .held, .charging:
+                        powerFlowError = AidenteL10n.t(
+                            outcome == .charging
+                                ? "已请求放电，但电池仍在充电。系统尚未执行放电；请检查系统校准状态或停止后重试。"
+                                : "已请求放电，但电池仍在保持电量。系统尚未执行主动放电，不能视为已经生效。",
+                            outcome == .charging
+                                ? "Discharge requested, but the battery is still charging. Check system calibration or stop and retry."
+                                : "Discharge requested, but the battery is holding its charge. Active discharge has not taken effect.")
+                    }
+                    continue
+                }
+                switch verification.sample(batteryPower: batteryService.metrics.batteryPower, isCharging: batteryService.metrics.isCharging) {
                 case .pending: if !preserveVerifiedHold || !batteryService.metrics.batteryPower.isFinite { powerHoldVerified = false }
                 case .held:
                     powerHoldVerified = true
@@ -970,6 +1014,7 @@ class ChargeManager {
         verificationTask?.cancel()
         powerFlowError = nil
         powerHoldVerified = false
+        powerDischargeVerified = false
         clearControlErrors()
         operationStatus = .monitoring
         updateSleepAssertion(shouldPreventSleep: false)

@@ -165,7 +165,9 @@ struct DashboardPopoverView: View {
             Divider()
             HStack(spacing: 12) {
                 Text(viewModel.operationStatusText).font(.caption).foregroundStyle(.secondary)
-                    .lineLimit(1).help(viewModel.operationStatusText)
+                    .lineLimit(1).help(viewModel.operationStatusText + AidenteL10n.t("；长按此状态文字编辑小组件。", "; hold this status text to edit widgets."))
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 0.5) { editor.isEditing = true }
                 Spacer(minLength: 4)
                 Button {
                     editor.isEditing.toggle()
@@ -197,8 +199,6 @@ struct DashboardPopoverView: View {
                 .accessibilityLabel(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"))
             }.buttonStyle(.borderless).font(.system(size: 11))
                 .padding(.horizontal, 16).frame(height: 41)
-                .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.5) { editor.isEditing = true }
         }
         .frame(width: 402, height: PopoverLayout.height(widgets: widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive))
         .background(AidenteMaterialLayer())
@@ -289,6 +289,8 @@ struct EnergyAppsWidget: View {
                     .accessibilityLabel(AidenteL10n.t("App 列表显示范围", "App List Scope"))
                     .help(AidenteL10n.t("按名称固定排序，不按功率换位；鼠标停留时固定名单，离开后更新。所有运行中的 App 包括空闲应用，后台进程可在能源使用设置中选择。", "Names stay in alphabetical order. Hover holds the list while readings update. All Running Apps includes idle apps; background processes are optional in Energy Use settings."))
             }
+            Text(AidenteL10n.t("App 功率为进程能耗估算，不等于电脑总功率，也不作为整机分流。", "App watts are process estimates, not total Mac power or a hardware power breakdown."))
+                .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if viewModel.topEnergyApps.count > 6 {
                 Text(AidenteL10n.t("按名称排序 · 向下滚动查看全部", "Sorted by name · scroll to see all")).font(.caption2).foregroundStyle(.secondary)
             }
