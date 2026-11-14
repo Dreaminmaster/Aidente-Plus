@@ -1,6 +1,7 @@
 import AppKit
 import Defaults
 import SwiftUI
+import AidenteShared
 
 @Observable @MainActor final class PopoverEditorState {
     static let shared = PopoverEditorState()
@@ -63,15 +64,18 @@ struct DashboardPopoverView: View {
                         }.padding(12)
                     }.help(AidenteL10n.t("输入目标百分比", "Enter a target percentage"))
                     Spacer(minLength: 0)
-                    if !automaticDischarge {
                     Button { viewModel.toggleForceDischarge() } label: {
                         HStack(spacing: 16) {
-                            Text(AidenteL10n.t(viewModel.forceDischargeActive ? "停止" : "放电", viewModel.forceDischargeActive ? "Stop" : "Discharge"))
-                            Image(systemName: viewModel.forceDischargeActive ? "stop.circle" : "minus.circle").font(.system(size: 16))
+                            Text(AidenteL10n.t(viewModel.dischargeRequested ? "停止" : "放电", viewModel.dischargeRequested ? "Stop" : "Discharge"))
+                            Image(systemName: viewModel.dischargeRequested ? "stop.circle" : "minus.circle").font(.system(size: 16))
                         }
-                    }.disabled(!canControl || (!viewModel.forceDischargeActive && viewModel.displayPercentage <= limit))
-                        .help(AidenteL10n.t("将电池放电至设定的充电上限。", "Discharge to the charge limit."))
-                    }
+                    }.disabled(!canControl || (!viewModel.dischargeRequested && viewModel.displayPercentage <= limit))
+                        .help(AidenteL10n.t(automaticDischarge
+                            ? "自动放电已开启。停止会同时关闭自动放电，避免立即重新开始。"
+                            : "将电池放电至设定的充电上限；放电期间点击停止。",
+                            automaticDischarge
+                            ? "Automatic discharge is on. Stop also turns it off to prevent an immediate restart."
+                            : "Discharge to the charge limit; click Stop to end it."))
                     Button { viewModel.toggleChargeLimitOverride() } label: {
                         HStack(spacing: 12) {
                             Text(AidenteL10n.t(viewModel.chargeLimitOverrideActive ? "停止" : "充满", viewModel.chargeLimitOverrideActive ? "Stop" : "Top Up"))
@@ -84,7 +88,7 @@ struct DashboardPopoverView: View {
                     }.accessibilityLabel(AidenteL10n.t("打开设置", "Open Settings"))
                 }.buttonStyle(PopoverHeaderButtonStyle())
                 PopoverChargeSlider(value: $draft, percentage: viewModel.displayPercentage,
-                    showPercentage: showPercentage, adapterConnected: viewModel.adapterConnected, chargingMode: viewModel.chargingMode, sailing: viewModel.sailingActive,
+                    showPercentage: showPercentage, adapterConnected: viewModel.adapterConnected, chargingMode: viewModel.chargingMode, motion: viewModel.trackMotion, sailing: viewModel.sailingActive,
                     minimum: below80 ? 20 : 80,
                     sailingLower: sailing && !viewModel.calibrationActive && !viewModel.chargeLimitOverrideActive ? max(20, (editingLimit ? Int(draft.rounded()) : limit) - sailingRange) : nil,
                     enabled: !viewModel.chargeLimitOverrideActive && !viewModel.calibrationActive && !viewModel.systemCalibrationActive,
@@ -406,6 +410,7 @@ private struct PopoverChargeSlider: View {
     let showPercentage: Bool
     let adapterConnected: Bool
     let chargingMode: ChargingMode
+    var motion: ChargeTrackMotion = .stopped
     let sailing: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let minimum: Int
@@ -426,7 +431,7 @@ private struct PopoverChargeSlider: View {
                 Capsule().fill(LinearGradient(colors: [Color.primary.opacity(0.25), Color.primary.opacity(0.16)], startPoint: .top, endPoint: .bottom))
                     .overlay(Capsule().strokeBorder(.white.opacity(0.20), lineWidth: 0.7))
                 Capsule().fill(LinearGradient(colors: [Color(red:0.12,green:0.46,blue:0.65),Color(red:0.09,green:0.35,blue:0.51)], startPoint: .top, endPoint: .bottom))
-                    .overlay(ChargeTrackGlow(active: adapterConnected && chargingMode == .charging, reducedMotion: reduceMotion).allowsHitTesting(false))
+                    .overlay(ChargeTrackGlow(motion: motion, reducedMotion: reduceMotion).allowsHitTesting(false))
                     .overlay(Capsule().strokeBorder(.white.opacity(0.23), lineWidth: 0.6))
                     .frame(width: width * CGFloat(max(0, min(100, percentage))) / 100)
                     .animation(reduceMotion ? nil : .easeInOut(duration:0.35), value: percentage)
@@ -441,10 +446,10 @@ private struct PopoverChargeSlider: View {
                         .foregroundStyle(percentage >= 15 ? Color.white : Color.primary).padding(.leading, 7)
                 }
                 HStack(spacing: 8) {
-                    if adapterConnected && chargingMode != .discharging {
+                    if adapterConnected && motion != .discharging {
                         HStack(spacing: 2) {
                             Image(systemName:"powerplug.portrait.fill")
-                            if chargingMode == .pluggedIn { Image(systemName:"pause.fill").font(.system(size:8)) }
+                            if motion != .charging { Image(systemName:"pause.fill").font(.system(size:8)) }
                         }
                     } else { Image(systemName:"battery.50percent") }
                     if sailing { Image(systemName:"location.north.fill").rotationEffect(.degrees(40)) }

@@ -73,6 +73,18 @@ class MenuViewModel {
     }
     var chargeLimitOverrideActive: Bool { chargeManager.chargeLimitOverrideActive }
     var forceDischargeActive: Bool { chargeManager.forceDischargeActive }
+    private var dischargeProgress = DischargeProgress()
+    var trackMotion: ChargeTrackMotion {
+        ChargeTrackMotion.observed(isCharging: isCharging, batteryPower: batteryPower,
+            fresh: lastPowerSampleDate.map { Date().timeIntervalSince($0) < 15 } ?? false)
+    }
+    var dischargeProgressText: String? {
+        guard dischargeRequested, let watts = dischargeProgress.watts, watts < -1, !isCharging else { return nil }
+        let power = String(format: "%.1f", -watts)
+        let used = dischargeProgress.consumedMilliampHours
+        return AidenteL10n.t("实测放电 \(power) W · 本次容量减少 \(used) mAh。系统百分比可能暂未更新。",
+            "Measured discharge \(power) W · capacity down \(used) mAh this session. The system percentage may update later.")
+    }
     var dischargeRequested: Bool {
         if case .discharging = chargeManager.operationStatus { return true }
         return false
@@ -233,6 +245,9 @@ class MenuViewModel {
 
     private func updateFormattedValues(from metrics: BatteryMetrics, adapter: AdapterMetrics) {
         let percentage = metrics.batteryPercentage
+        dischargeProgress.update(requested: dischargeRequested, target: Defaults[.chargeLimit],
+            capacity: metrics.currentCapacityMilliampHours, batteryPower: metrics.batteryPower,
+            date: batteryService.lastPowerSampleDate, now: Date())
         hardwarePercentage = metrics.hardwareBatteryPercentage
         hasHardwarePercentage = metrics.hasHardwarePercentage
         batteryCurrent = metrics.batteryCurrent

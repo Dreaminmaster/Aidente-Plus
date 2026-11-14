@@ -103,10 +103,16 @@ struct PopoverStatusExplanation: View {
         if viewModel.sailingActive {
             return AidenteL10n.t("充电已暂停，允许电量自然浮动；降至\(max(20, limit - sailingRange))%时恢复充电，充至\(limit)%再暂停。", "Charging paused. It resumes at \(max(20, limit - sailingRange))% and stops again at \(limit)%.")
         }
+        if viewModel.powerFlowPending {
+            if viewModel.isCharging {
+                return AidenteL10n.t("已请求暂停，但电池目前仍在充电；目标为\(limit)%，等待系统执行并确认保持。",
+                    "Hold requested, but the battery is still charging. Target \(limit)%; waiting for macOS to apply and confirm the hold.")
+            }
+            return viewModel.operationStatusText
+        }
         if viewModel.isCharging {
             return AidenteL10n.t("电源正在为电脑供电并给电池充电，达到\(limit)%后将请求保持。", "The adapter powers your Mac and charges the battery. A hold is requested at \(limit)%.")
         }
-        if viewModel.powerFlowPending { return viewModel.operationStatusText }
         return AidenteL10n.t("充电已暂停，当前上限为\(limit)%。电脑优先使用适配器供电，瞬时负载较大时电池仍可能辅助供电。", "Charging paused at a \(limit)% limit. The adapter supplies power; the battery may assist during brief high loads.")
     }
     var body: some View {
@@ -121,6 +127,10 @@ struct PopoverStatusExplanation: View {
                 }.accessibilityLabel(viewModel.operationStatusText)
             }
             Text(explanation).font(.caption).fixedSize(horizontal: false, vertical: true)
+            if let progress = viewModel.dischargeProgressText {
+                Text(progress).font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }

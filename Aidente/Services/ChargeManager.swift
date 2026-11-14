@@ -151,7 +151,9 @@ class ChargeManager {
             return appliedPowerRequest != request || !powerDischargeVerified || !fresh
                 || batteryService.metrics.isCharging || batteryService.metrics.batteryPower >= -1
         }
-        return !request.charging && (!powerHoldVerified || !fresh || appliedPowerRequest != request)
+        return !request.charging && (!powerHoldVerified || !fresh || appliedPowerRequest != request
+            || batteryService.metrics.isCharging || !batteryService.metrics.batteryPower.isFinite
+            || abs(batteryService.metrics.batteryPower) > 1)
     }
     var operationStatusTitle: String {
         if controlError != nil { return AidenteL10n.t("充电控制未生效") }
@@ -345,6 +347,11 @@ class ChargeManager {
         var chargingStateReason: String?
         let chargeLimit = Defaults[.chargeLimit]
         if lastLimit != chargeLimit || lastAutomaticDischarge != Defaults[.automaticDischarge] {
+            // Turning automation on takes ownership of a running manual drain;
+            // turning it off then consistently returns to a normal AC hold.
+            if lastAutomaticDischarge != Defaults[.automaticDischarge], Defaults[.automaticDischarge] {
+                forceDischargeActive = false
+            }
             limitPolicy = ChargeLimitPolicy()
             stateWasCleared = true
             lastLimit = chargeLimit
@@ -867,7 +874,8 @@ class ChargeManager {
     }
 
     func toggleForceDischarge() {
-        if forceDischargeActive {
+        if forceDischargeActive || limitPolicy.automaticDischargeActive {
+            Defaults[.automaticDischarge] = false
             resumeNormalManagement()
         } else {
             startDischarge(to: Defaults[.chargeLimit])
