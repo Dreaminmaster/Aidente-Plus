@@ -1,4 +1,5 @@
 import AppKit
+import AidenteShared
 import Darwin
 import Defaults
 import Foundation
@@ -47,7 +48,9 @@ final class DiagnosticCenter {
 
     private(set) var recordingStartedAt: Date?
     private(set) var isExporting = false
-    private(set) var lastExportURL: URL?
+    private let archiveStore = DiagnosticArchiveStore(defaults: AidenteRuntime.preferenceStore)
+    private(set) var exportedPackages: [URL] = []
+    var lastExportURL: URL? { exportedPackages.first }
     private(set) var statusMessage: String?
     private(set) var errorMessage: String?
 
@@ -64,6 +67,7 @@ final class DiagnosticCenter {
     init(batteryService: BatteryService, chargeManager: ChargeManager) {
         self.batteryService = batteryService
         self.chargeManager = chargeManager
+        exportedPackages = archiveStore.urls
         restoreRecordingSession()
     }
 
@@ -130,7 +134,8 @@ final class DiagnosticCenter {
             let exportedURL = try await Task.detached(priority: .utility) {
                 try Self.createDiagnosticPackage(inputs: inputs)
             }.value
-            lastExportURL = exportedURL
+            try archiveStore.register(exportedURL)
+            exportedPackages = archiveStore.urls
             statusMessage = AidenteL10n.t(
                 "诊断包已导出。发送前仍可解压检查内容。",
                 "Diagnostics exported. You can inspect the archive before sending it."
@@ -149,9 +154,50 @@ final class DiagnosticCenter {
         isExporting = false
     }
 
+    func revealExport(_ url: URL) {
+        guard exportedPackages.contains(url), FileManager.default.fileExists(atPath: url.path) else {
+            errorMessage = AidenteL10n.t("文件已移动或删除，可移除此记录。", "The file was moved or deleted. You can remove this record.")
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func addExistingPackage() {
+        guard !isExporting, !CompleteUninstaller.shared.isRunning else { return }
+        let panel = NSOpenPanel()
+        panel.title = AidenteL10n.t("选择已有诊断 ZIP", "Choose an Existing Diagnostic ZIP")
+        panel.allowedContentTypes = [.zip]; panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try archiveStore.register(url); exportedPackages = archiveStore.urls
+            errorMessage = nil
+            statusMessage = AidenteL10n.t("已添加本地诊断包记录，未上传任何文件。", "Local package added to the list. No files were uploaded.")
+        } catch { errorMessage = Self.sanitize(error.localizedDescription) }
+    }
+
+    func trashExport(_ url: URL) {
+        guard !isExporting, !CompleteUninstaller.shared.isRunning else { return }
+        do {
+            try archiveStore.trash(url); exportedPackages = archiveStore.urls
+            errorMessage = nil
+            statusMessage = AidenteL10n.t("诊断包已移到废纸篓，可在访达中恢复。", "Diagnostic package moved to Trash. You can restore it in Finder.")
+        } catch {
+            errorMessage = AidenteL10n.t("无法移到废纸篓：", "Could not move to Trash: ") + Self.sanitize(error.localizedDescription)
+            statusMessage = nil
+        }
+    }
+
+    func forgetExport(_ url: URL) {
+        guard !isExporting else { return }
+        archiveStore.forget(url); exportedPackages = archiveStore.urls
+        errorMessage = nil
+        statusMessage = AidenteL10n.t("已移除列表记录，未删除磁盘文件。", "Removed from the list. The file on disk was not deleted.")
+    }
+
     func revealLastExport() {
         guard let lastExportURL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([lastExportURL])
+        revealExport(lastExportURL)
     }
 
     func copySupportIdentifier() {

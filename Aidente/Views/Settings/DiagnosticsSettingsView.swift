@@ -4,6 +4,7 @@ import SwiftUI
 struct DiagnosticsSettingsView: View {
     @Default(.appLanguage) private var appLanguage
     @Bindable var diagnosticCenter: DiagnosticCenter
+    @State private var packageToTrash: URL?
 
     var body: some View {
         AidenteSettingsPage {
@@ -168,6 +169,36 @@ struct DiagnosticsSettingsView: View {
                     Spacer()
                 }
 
+                AidenteRowDivider()
+                HStack {
+                    Text(AidenteL10n.t("本地诊断包", "Local Diagnostic Packages")).font(.headline)
+                    Spacer()
+                    Button(AidenteL10n.t("添加已有诊断包…", "Add Existing Package…")) {
+                        diagnosticCenter.addExistingPackage()
+                    }.disabled(diagnosticCenter.isExporting)
+                }
+                Text(AidenteL10n.t("诊断包是保存位置中的普通 ZIP。移到废纸篓可恢复；移除记录只清理此列表。", "Packages are ordinary ZIP files at their saved locations. Trash is recoverable; removing a record only clears this list."))
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(diagnosticCenter.exportedPackages, id: \.path) { url in
+                    let exists = FileManager.default.fileExists(atPath: url.path)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(url.lastPathComponent).font(.subheadline.weight(.medium)).textSelection(.enabled)
+                        Text(exists ? url.deletingLastPathComponent().path : AidenteL10n.t("文件已移动或删除", "File moved or deleted"))
+                            .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        HStack {
+                            Button(AidenteL10n.t("在访达中显示", "Show in Finder")) { diagnosticCenter.revealExport(url) }
+                                .disabled(!exists)
+                            Button(AidenteL10n.t("移到废纸篓…", "Move to Trash…"), role: .destructive) { packageToTrash = url }
+                                .disabled(!exists)
+                            Button(AidenteL10n.t("移除记录", "Remove Record")) { diagnosticCenter.forgetExport(url) }
+                        }.disabled(diagnosticCenter.isExporting)
+                    }.padding(.vertical, 6)
+                }
+                if diagnosticCenter.exportedPackages.isEmpty {
+                    Text(AidenteL10n.t("尚无记录；导出后会在这里显示，也可添加以前保存的诊断包。", "No packages listed. Export one or add a previously saved package."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 if let statusMessage = diagnosticCenter.statusMessage {
                     AidenteNotice(
                         text: statusMessage,
@@ -236,6 +267,14 @@ struct DiagnosticsSettingsView: View {
                     .foregroundStyle(.secondary)
                 }
             }
+        }
+        .alert(AidenteL10n.t("移到废纸篓？", "Move to Trash?"), isPresented: Binding(
+            get: { packageToTrash != nil }, set: { if !$0 { packageToTrash = nil } }
+        ), presenting: packageToTrash) { url in
+            Button(AidenteL10n.t("移到废纸篓", "Move to Trash"), role: .destructive) { diagnosticCenter.trashExport(url) }
+            Button(AidenteL10n.t("取消", "Cancel"), role: .cancel) { }
+        } message: { url in
+            Text(url.lastPathComponent + AidenteL10n.t(" 将移入废纸篓，可从访达恢复。", " will move to Trash and can be restored in Finder."))
         }
     }
 

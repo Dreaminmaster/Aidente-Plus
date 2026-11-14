@@ -79,6 +79,7 @@ struct PopoverStatusExplanation: View {
     let viewModel: MenuViewModel
     @Default(.chargeLimit) private var limit
     @Default(.sailingModeLimit) private var sailingRange
+    @Default(.automaticDischarge) private var automaticDischarge
     private var explanation: String {
         if let error = viewModel.controlErrorText { return error }
         if !viewModel.manageChargingEnabled {
@@ -112,6 +113,10 @@ struct PopoverStatusExplanation: View {
         }
         if viewModel.isCharging {
             return AidenteL10n.t("电源正在为电脑供电并给电池充电，达到\(limit)%后将请求保持。", "The adapter powers your Mac and charges the battery. A hold is requested at \(limit)%.")
+        }
+        if viewModel.displayPercentage > limit && !automaticDischarge {
+            return AidenteL10n.t("当前\(viewModel.displayPercentage)%高于上限\(limit)%，充电已暂停。电脑使用适配器供电；若需主动降到\(limit)%，请点击“放电”或开启自动放电。",
+                "Battery \(viewModel.displayPercentage)% is above the \(limit)% limit; charging is paused. The adapter powers your Mac. Use Discharge or enable Automatic Discharge to lower it actively.")
         }
         return AidenteL10n.t("充电已暂停，当前上限为\(limit)%。电脑优先使用适配器供电，瞬时负载较大时电池仍可能辅助供电。", "Charging paused at a \(limit)% limit. The adapter supplies power; the battery may assist during brief high loads.")
     }

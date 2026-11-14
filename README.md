@@ -1,6 +1,6 @@
 # Aidente-Plus
 
-独立的 MacBook 电池与充电管理项目。应用名称仍为 **Aidente**，当前版本 **6.2.3 / Build 25**。
+独立的 MacBook 电池与充电管理项目。应用名称仍为 **Aidente**，当前版本 **6.2.4 / Build 26**。
 
 基于开源 Aidente / Stasis 工作继续开发，保留 GPL-3.0 及第三方许可证。与 AppHouseKitchen、AlDente 无隶属关系；没有包含 AlDente 闭源程序、付费激活逻辑或原版素材。不宣称与 AlDente Pro 的全部功能、视觉或动画完全一致。
 
@@ -75,3 +75,5 @@ zsh script/package_dmg.sh /absolute/path/to/Aidente-Plus.dmg
 - 上游 Aidente：<https://github.com/buffoons8-sketch/Aidente>
 - Stasis：<https://github.com/srimanachanta/Stasis>
 - [GPL-3.0](LICENSE) 与 [第三方声明](THIRD_PARTY_NOTICES.md)
+
+诊断包管理：在“诊断”页导出或添加已有 ZIP 后，可查看保存位置、移到废纸篓，或仅移除列表记录。移除记录不会删除文件；文件进入废纸篓后可通过访达恢复。包不会自动上传。
