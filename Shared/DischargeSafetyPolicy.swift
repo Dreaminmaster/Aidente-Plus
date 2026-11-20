@@ -9,6 +9,9 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         var startingRaw: Double
         var lastDisplay: Int
         var lastDisplayChange: Date
+        // Optional for recovery snapshots produced by older versions.
+        var progressRaw: Double?
+        var progressAt: Date?
     }
     private var session: Session?
     private var blockedTarget: Int?
@@ -28,17 +31,25 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         guard displayed > target else { reset(); return false }
         if session?.target != target {
             session = Session(target: target, startingDisplay: displayed, startingRaw: raw,
-                lastDisplay: displayed, lastDisplayChange: now)
+                lastDisplay: displayed, lastDisplayChange: now, progressRaw: raw, progressAt: now)
         }
         guard var active = session else { return false }
-        if displayed != active.lastDisplay {
+        let displayProgress = displayed < active.lastDisplay
+        let rawProgress = (active.progressRaw ?? active.startingRaw) - raw >= 0.25
+        if displayProgress {
             active.lastDisplay = displayed
             active.lastDisplayChange = now
-            session = active
         }
+        if active.progressAt == nil || displayProgress || rawProgress {
+            active.progressAt = now
+            active.progressRaw = raw
+        }
+        session = active
         let requestedDrop = Double(max(1, active.startingDisplay - target))
         let consumed = active.startingRaw - raw
-        if now.timeIntervalSince(active.lastDisplayChange) >= 120 && consumed >= requestedDrop {
+        let exhaustedBudget = now.timeIntervalSince(active.lastDisplayChange) >= 120 && consumed >= requestedDrop
+        let noProgress = now.timeIntervalSince(active.progressAt ?? now) >= 300
+        if exhaustedBudget || noProgress {
             blockedTarget = target
             return true
         }

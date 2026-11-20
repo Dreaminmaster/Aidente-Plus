@@ -726,7 +726,7 @@ class ChargeManager {
                     if error.localizedDescription.contains("DISCHARGE_SAFETY_STOP") {
                         safetyStopReason = error.localizedDescription.contains("恢复未确认")
                             ? "电量读数异常，已停止主动策略。原设置尚未确认恢复，请修复控制服务。"
-                            : "电量显示长时间未更新或安全读数不可用，已停止放电并恢复原设置。充电管理已关闭；请在读数恢复后手动启用。"
+                            : "放电进展不足、已达安全容量预算，或读数不可用。已停止放电并恢复接管前设置。若要继续限充，请重新启用充电管理。"
                         let level = batteryService.metrics.batteryPercentage
                         safetyStopReason = AidenteL10n.t("放电未完成（目标\(request.chargeCeiling)%，当前系统读数\(level)%）。", "Discharge not completed (target \(request.chargeCeiling)%, current system reading \(level)%). ") + safetyStopReason
                         if batteryService.metrics.hasHardwarePercentage {

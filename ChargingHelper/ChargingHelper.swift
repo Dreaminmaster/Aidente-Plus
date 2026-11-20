@@ -264,7 +264,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 let current = (try? SMCBattery.getCurrent()).map { String($0) } ?? "unavailable"
                 let rawCurrent = rawCapacity.map { String($0.current) } ?? "unavailable"
                 let rawFull = rawCapacity.map { String($0.full) } ?? "unavailable"
-                let cause = raw.isFinite && (1...100).contains(raw) ? "dischargeBudgetOrSafetyLatch" : "invalidCapacity"
+                let cause = raw.isFinite && (1...100).contains(raw) ? "dischargeProgressBudgetOrSafetyLatch" : "invalidCapacity"
                 logger.error("DISCHARGE_SAFETY_EVIDENCE target=\(policy.chargeCeiling, privacy: .public) display=\(percentage, privacy: .public) rawCurrentMAh=\(rawCurrent, privacy: .public) rawFullMAh=\(rawFull, privacy: .public) currentA=\(current, privacy: .public) cause=\(cause, privacy: .public)")
                 self.policy = nil
                 nativePolicy.reset()
@@ -279,7 +279,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 }
                 logger.error("DISCHARGE_SAFETY_STOP display=\(percentage) target=\(policy.chargeCeiling)")
                 throw NSError(domain: "AidenteControl", code: 6, userInfo: [NSLocalizedDescriptionKey:
-                    "DISCHARGE_SAFETY_STOP: 电量显示长时间未更新或安全读数不可用，已停止放电并恢复接管前设置。"])
+                    "DISCHARGE_SAFETY_STOP: 放电长期没有足够进展、已达安全容量预算，或读数不可用。已停止放电并恢复接管前设置。"])
             }
             let externalConnected = try SMCBattery.externalPowerConnected()
             guard let limit = nativePolicy.target(policy: policy, percentage: percentage,

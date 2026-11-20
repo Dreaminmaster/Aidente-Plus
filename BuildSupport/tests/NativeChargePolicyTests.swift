@@ -126,6 +126,15 @@ final class Registers: NativeChargeRegisters {
         check(!safety.mustStop(managed: true, dischargeRequested: true, target: 80, displayed: 82, raw: 82, now: start), "Ordinary progress begins")
         check(!safety.mustStop(managed: true, dischargeRequested: true, target: 80, displayed: 81, raw: 80, now: start.addingTimeInterval(180)), "A fresh lower display reading is real progress")
         check(!safety.mustStop(managed: true, dischargeRequested: true, target: 80, displayed: 80, raw: 79.5, now: start.addingTimeInterval(360)), "Reaching the requested display target completes without a stale-gauge error")
+        var stalled = DischargeSafetyPolicy()
+        check(!stalled.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.5, now: start), "Start a one-point discharge")
+        check(!stalled.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 96, raw: 94.7, now: start.addingTimeInterval(220)), "A temporary rise does not restart the progress timer")
+        stalled = try JSONDecoder().decode(DischargeSafetyPolicy.self, from: JSONEncoder().encode(stalled))
+        check(stalled.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.4, now: start.addingTimeInterval(300)), "An unchanged gauge and insignificant raw progress must terminate even before capacity budget is consumed")
+        var slow = DischargeSafetyPolicy()
+        _ = slow.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.5, now: start)
+        check(!slow.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.2, now: start.addingTimeInterval(280)), "Meaningful raw progress renews the stall timer")
+        check(!slow.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 94, raw: 94.1, now: start.addingTimeInterval(305)), "An observed target after slow progress is still completion")
         print("PASS: \(count) native policy, sleep, discharge intent, delayed readback and rollback checks (no hardware writes)")
     }
 }
