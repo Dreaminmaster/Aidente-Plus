@@ -78,6 +78,17 @@ class MenuViewModel {
         guard let lastPowerSampleDate else { return false }
         return (-1..<15).contains(Date().timeIntervalSince(lastPowerSampleDate))
     }
+    var observedChargingState: String {
+        guard hasFreshPowerSample, batteryCurrent.isFinite else {
+            return AidenteL10n.t("状态待确认", "Awaiting verification")
+        }
+        if batteryCurrent > 0.1 { return AidenteL10n.t("正在充电", "Charging") }
+        if batteryCurrent < -0.1 { return AidenteL10n.t("电池正在供电", "Battery supplying power") }
+        if isCharging { return AidenteL10n.t("状态待确认", "Awaiting verification") }
+        return adapterConnected
+            ? AidenteL10n.t("已暂停充电", "Charging paused")
+            : AidenteL10n.t("使用电池", "On battery")
+    }
     var trackMotion: ChargeTrackMotion {
         ChargeTrackMotion.observed(isCharging: isCharging, batteryPower: batteryPower,
             fresh: hasFreshPowerSample)

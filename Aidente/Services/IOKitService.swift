@@ -167,6 +167,8 @@ class IOKitService {
             batteryMetrics.timeRemaining = getTimeRemaining(powerInfo: powerInfo) ?? -1
         }
 
+        batteryMetrics.rawCurrentCapacityMilliampHours = getPropertyValue(batteryService, key: "AppleRawCurrentCapacity")
+        batteryMetrics.rawFullCapacityMilliampHours = getPropertyValue(batteryService, key: "AppleRawMaxCapacity")
         let capacities = getBatteryCapacities(
             displayedPercentage: batteryMetrics.batteryPercentage
         )

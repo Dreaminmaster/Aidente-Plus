@@ -123,6 +123,13 @@ public struct SMCBattery: Sendable, BatteryPowerControlling {
     /// Retain fractional raw capacity until the control policy selects an
     /// integer firmware boundary. Display rounding is not a control decision.
     public static func firmwarePercentageExact() throws -> Double {
+        let capacity = try rawCapacity()
+        let percentage = capacity.current / capacity.full * 100
+        guard percentage.isFinite else { throw SMCBatteryError.unsupportedCapability }
+        return max(0, min(100, percentage))
+    }
+
+    public static func rawCapacity() throws -> (current: Double, full: Double) {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         guard service != 0 else { throw SMCBatteryError.unsupportedCapability }
         defer { IOObjectRelease(service) }
@@ -135,9 +142,7 @@ public struct SMCBattery: Sendable, BatteryPowerControlling {
               full.isFinite, current.isFinite, full > 0, current >= 0 else {
             throw SMCBatteryError.unsupportedCapability
         }
-        let percentage = current / full * 100
-        guard percentage.isFinite else { throw SMCBatteryError.unsupportedCapability }
-        return max(0, min(100, percentage))
+        return (current, full)
     }
 
     public static func macOSPercentage() throws -> Int {

@@ -13,6 +13,7 @@ private struct DiagnosticExportInputs: Sendable {
     let logWindowMinutes: Int
     let systemReport: String
     let nativeChargeReport: String
+    let controlEventsReport: String
     let batteryReport: String
     let preferencesReport: String
     let energyReport: String?
@@ -328,6 +329,7 @@ final class DiagnosticCenter {
             logWindowMinutes: logWindowMinutes,
             systemReport: makeSystemReport(),
             nativeChargeReport: await Self.readNativeChargeReport(),
+            controlEventsReport: (try? chargeManager.exportControlEvents()) ?? "[]",
             batteryReport: makeBatteryReport(),
             preferencesReport: makePreferencesReport(),
             energyReport: energyReport,
@@ -520,6 +522,7 @@ final class DiagnosticCenter {
             inputs.systemReport,
             to: packageDirectory.appendingPathComponent("system.txt")
         )
+        try writeText(inputs.controlEventsReport, to: packageDirectory.appendingPathComponent("charging-events.json"))
         try writeText(inputs.nativeChargeReport, to: packageDirectory.appendingPathComponent("system-charge-limit.json"))
         try writeText(
             inputs.batteryReport,

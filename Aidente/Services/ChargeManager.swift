@@ -119,6 +119,67 @@ class ChargeManager {
         }
     }
     var chargeLimitOverrideActive: Bool { topUpActive }
+    private struct ControlEvent: Encodable {
+        let observedAt: Date
+        let powerSampleAt: Date?
+        let savedLimit: Int
+        let requestedTarget: Int?
+        let systemPercentage: Int
+        let rawCurrentCapacityMilliampHours: Int?
+        let rawFullCapacityMilliampHours: Int?
+        let batteryCurrentAmps: Double?
+        let batteryPowerWatts: Double?
+        let adapterConnected: Bool
+        let systemReportsCharging: Bool
+        let state: String
+        let cause: String
+    }
+
+    @ObservationIgnored private var controlEvents: [ControlEvent] = []
+    @ObservationIgnored private var lastEventKey: [String] = []
+
+    func exportControlEvents() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return String(decoding: try encoder.encode(controlEvents), as: UTF8.self)
+    }
+
+    private func recordControlTransition(reason: String? = nil) {
+        guard !AidenteRuntime.isUIPreview else { return }
+        let now = Date()
+        let sample = batteryService.lastPowerSampleDate
+        let fresh = sample.map { (-1..<15).contains(now.timeIntervalSince($0)) } ?? false
+        let metrics = batteryService.metrics
+        let connected = batteryService.adapterMetrics.adapterConnected
+        let savedLimit = Defaults[.chargeLimit]
+        let request = pendingPowerRequest
+        let cause: String
+        if let reason { cause = reason }
+        else if !safetyStopReason.isEmpty { cause = "dischargeSafetyStop" }
+        else if serviceControlError != nil { cause = "controlServiceError" }
+        else if chargingControlError != nil || adapterControlError != nil { cause = "controlRequestError" }
+        else if operationStatus == .systemCalibration { cause = "systemCalibrationOverride" }
+        else if !fresh { cause = "powerSampleUnavailableOrStale" }
+        else if powerFlowError != nil { cause = "powerFlowMismatch" }
+        else if powerFlowPending { cause = "waitingForPowerVerification" }
+        else { cause = "stateChanged" }
+        let key = [operationStatusTitle, cause, String(savedLimit), String(request?.chargeCeiling ?? -1),
+                   String(request?.charging ?? false), String(request?.adapter ?? false),
+                   String(connected), String(metrics.isCharging), String(isSystemSleeping)]
+        guard key != lastEventKey else { return }
+        lastEventKey = key
+        controlEvents.append(ControlEvent(observedAt: now, powerSampleAt: sample, savedLimit: savedLimit,
+            requestedTarget: request?.chargeCeiling, systemPercentage: metrics.batteryPercentage,
+            rawCurrentCapacityMilliampHours: metrics.rawCurrentCapacityMilliampHours,
+            rawFullCapacityMilliampHours: metrics.rawFullCapacityMilliampHours,
+            batteryCurrentAmps: fresh && metrics.batteryCurrent.isFinite ? metrics.batteryCurrent : nil,
+            batteryPowerWatts: fresh && metrics.batteryPower.isFinite ? metrics.batteryPower : nil,
+            adapterConnected: connected, systemReportsCharging: metrics.isCharging,
+            state: operationStatusTitle, cause: cause))
+        if controlEvents.count > 128 { controlEvents.removeFirst(controlEvents.count - 128) }
+    }
+
     var controlDiagnostics: [String: String] {
         [
             "sleeping": String(isSystemSleeping),
@@ -291,6 +352,7 @@ class ChargeManager {
             return
         }
 
+        defer { recordControlTransition() }
         var stateWasCleared = false
 
         if controlState.adapterConnected != lastAdapterConnected {
@@ -422,6 +484,7 @@ class ChargeManager {
                     "Discharging to \(target)%"
                 )
             } else {
+                recordControlTransition(reason: "dischargeTargetReached")
                 forceDischargeActive = false
                 manualPauseActive = false
                 Defaults[.manualPauseActive] = false
@@ -652,6 +715,12 @@ class ChargeManager {
                     batteryService.scheduleSinglePoll()
                     if changed { schedulePowerVerification(request, preserveVerifiedHold: preserveHold) }
                 } catch {
+                    let failureCause: String?
+                    switch error as? XPCError {
+                    case .helperUnavailable, .timeout: failureCause = "controlServiceError"
+                    default: failureCause = nil
+                    }
+                    defer { recordControlTransition(reason: failureCause) }
                     appliedPowerRequest = nil
                     guard pendingPowerRequest == request else { continue }
                     if error.localizedDescription.contains("DISCHARGE_SAFETY_STOP") {
@@ -665,6 +734,7 @@ class ChargeManager {
                             safetyStopReason += AidenteL10n.t(" 最近读取的硬件容量换算为\(hardware)%；它与系统百分比使用不同刻度，不能视为已达目标或继续无限放电。", " Latest hardware-capacity ratio: \(hardware)%. It uses a different scale from the system percentage; this is not target completion and discharge cannot continue without a safe bound.")
                         }
                         logger.error("DISCHARGE_STOP_OBSERVED target=\(request.chargeCeiling, privacy: .public) display=\(level, privacy: .public) hardware=\(self.batteryService.metrics.hardwareBatteryPercentage, privacy: .public) batteryW=\(self.batteryService.metrics.batteryPower, privacy: .public)")
+                        recordControlTransition()
                         Defaults[.lastDischargeSafetyStopReason] = safetyStopReason
                         forceDischargeActive = false
                         manualPauseActive = false
@@ -704,6 +774,7 @@ class ChargeManager {
                 guard let self, pendingPowerRequest == request, !isSystemSleeping else { return }
                 await batteryService.refreshPowerForVerification()
                 guard !Task.isCancelled, pendingPowerRequest == request, !isSystemSleeping else { return }
+                defer { recordControlTransition() }
                 if SystemCalibrationService.shared.isActive {
                     verification = ChargeHoldVerification()
                     resumeVerification = ChargeResumeVerification()
@@ -896,7 +967,6 @@ class ChargeManager {
 
     func pauseCharging() {
         guard !SystemCalibrationService.shared.isActive else { return }
-        Defaults[.chargeLimit] = min(100, max(20, batteryService.metrics.batteryPercentage))
         setTopUpActive(false)
         forceDischargeActive = false
         cancelCalibration(reevaluate: false)
@@ -935,6 +1005,7 @@ class ChargeManager {
 
     func toggleForceDischarge() {
         if forceDischargeActive || limitPolicy.automaticDischargeActive {
+            recordControlTransition(reason: "dischargeStoppedByUser")
             Defaults[.automaticDischarge] = false
             resumeNormalManagement()
         } else {
@@ -963,6 +1034,7 @@ class ChargeManager {
         wakeTask?.cancel()
         isSystemSleeping = true
         verificationTask?.cancel()
+        recordControlTransition(reason: "systemWillSleep")
     }
 
     func resumeFromSleep() {
@@ -972,6 +1044,7 @@ class ChargeManager {
             await batteryService.refreshAfterWake()
             guard !Task.isCancelled else { return }
             isSystemSleeping = false
+            recordControlTransition(reason: "systemDidWake")
             checkControlService()
         }
     }

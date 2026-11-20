@@ -1,3 +1,4 @@
+import smc_power
 import AidenteShared
 import Defaults
 import SwiftUI
@@ -80,6 +81,8 @@ struct PopoverStatusExplanation: View {
     @Default(.chargeLimit) private var limit
     @Default(.sailingModeLimit) private var sailingRange
     @Default(.automaticDischarge) private var automaticDischarge
+    @State private var showSystemHoldingPoint = false
+    @State private var systemHoldingPoint: String?
     private var explanation: String {
         if let error = viewModel.controlErrorText { return error }
         if !viewModel.manageChargingEnabled {
@@ -134,6 +137,32 @@ struct PopoverStatusExplanation: View {
                         Image(systemName: symbol)
                     }
                 }.accessibilityLabel(viewModel.operationStatusText)
+            }
+            Text(AidenteL10n.t("设定上限 \(limit)% · 当前 \(viewModel.displayPercentage)% · \(viewModel.observedChargingState)",
+                                "Limit \(limit)% · Battery \(viewModel.displayPercentage)% · \(viewModel.observedChargingState)"))
+                .font(.caption.weight(.semibold))
+            DisclosureGroup(AidenteL10n.t("系统保持点", "System holding point"), isExpanded: $showSystemHoldingPoint) {
+                Text(systemHoldingPoint ?? AidenteL10n.t("正在读取…", "Reading…"))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.caption2)
+            .task(id: showSystemHoldingPoint) {
+                guard showSystemHoldingPoint else { return }
+                systemHoldingPoint = nil
+                while !Task.isCancelled {
+                    let state = await Task.detached(priority: .utility) { try? NativeChargeLimit().read() }.value
+                    guard !Task.isCancelled else { return }
+                    if let state, state.enabled {
+                        systemHoldingPoint = AidenteL10n.t("系统登记 \(state.limit)%。实际是否充电请看上方状态。",
+                            "macOS reports \(state.limit)%. See the status above for actual charging.")
+                    } else if state != nil {
+                        systemHoldingPoint = AidenteL10n.t("系统限充未启用。", "The system charge limit is off.")
+                    } else {
+                        systemHoldingPoint = AidenteL10n.t("此机型或当前系统状态暂时无法读回。", "Readback is unavailable for this Mac or system state.")
+                    }
+                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                }
             }
             Text(explanation).font(.caption).fixedSize(horizontal: false, vertical: true)
             if let progress = viewModel.dischargeProgressText {

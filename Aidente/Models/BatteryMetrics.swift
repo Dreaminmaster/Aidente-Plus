@@ -17,6 +17,8 @@ struct BatteryMetrics: Codable, Equatable, Sendable {
     var batteryHealth: Double = 0
     var cycleCount: Int = 0
 
+    var rawCurrentCapacityMilliampHours: Int?
+    var rawFullCapacityMilliampHours: Int?
     var currentCapacityMilliampHours: Int = 0
     var estimatedFullChargeCapacityMilliampHours: Int = 0
     var designCapacityMilliampHours: Int = 0

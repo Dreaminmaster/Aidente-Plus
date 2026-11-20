@@ -251,7 +251,8 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
             }
             let percentage = try SMCBattery.macOSPercentage()
             let beforeSafety = dischargeSafety
-            let raw = policy.adapter ? Double.nan : ((try? SMCBattery.firmwarePercentageExact()) ?? .nan)
+            let rawCapacity = policy.adapter ? nil : (try? SMCBattery.rawCapacity())
+            let raw = rawCapacity.map { min(100, max(0, $0.current / $0.full * 100)) } ?? .nan
             let safetyStop = dischargeSafety.mustStop(managed: policy.managed,
                 dischargeRequested: !policy.adapter, target: policy.chargeCeiling,
                 displayed: percentage, raw: raw, now: Date())
@@ -260,6 +261,11 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 guard controlDefaults.synchronize() else { throw CocoaError(.fileWriteUnknown) }
             }
             if safetyStop {
+                let current = (try? SMCBattery.getCurrent()).map { String($0) } ?? "unavailable"
+                let rawCurrent = rawCapacity.map { String($0.current) } ?? "unavailable"
+                let rawFull = rawCapacity.map { String($0.full) } ?? "unavailable"
+                let cause = raw.isFinite && (1...100).contains(raw) ? "dischargeBudgetOrSafetyLatch" : "invalidCapacity"
+                logger.error("DISCHARGE_SAFETY_EVIDENCE target=\(policy.chargeCeiling, privacy: .public) display=\(percentage, privacy: .public) rawCurrentMAh=\(rawCurrent, privacy: .public) rawFullMAh=\(rawFull, privacy: .public) currentA=\(current, privacy: .public) cause=\(cause, privacy: .public)")
                 self.policy = nil
                 nativePolicy.reset()
                 do { try restoreNativeLimit() }
