@@ -228,7 +228,7 @@ import AidenteShared
         session.sample(full: false, sampleDate: now.addingTimeInterval(3), now: now.addingTimeInterval(3))
         check(session.fullSamples == 0, "Interrupted full confirmation restarts")
         for second in 4...6 { session.sample(full: true, sampleDate: now.addingTimeInterval(Double(second)), now: now.addingTimeInterval(Double(second))) }
-        check(session.waitingForRelease && session.canContinue, "Confirmed full charge permits handoff even before Apple clears its override flag")
+        check(session.waitingForRelease && !session.canContinue, "Full charge must not hand off before Apple explicitly releases its override")
         let persisted = try JSONEncoder().encode(session)
         session = try JSONDecoder().decode(SystemCalibrationSession.self, from: persisted)
         check(session.waitingForRelease, "Pending system calibration survives restart")
@@ -246,6 +246,8 @@ import AidenteShared
         session.observe(GaugingEvent(date: now.addingTimeInterval(9), active: true), now: now.addingTimeInterval(9))
         session.finishIfInterrupted(percentage: 80, isCharging: false)
         check(session.pending, "No release cannot be mistaken for an aborted OS calibration")
+        check(SystemCalibrationFollowUp.stage(current: .idle, preference: .restorePolicy) == .idle, "Default OS recovery never starts app calibration or active discharge")
+        check(SystemCalibrationFollowUp.stage(current: .chargingToFull, preference: .restorePolicy) == .dischargingToLow, "An explicit user cycle survives ordinary OS recovery")
         check(SystemCalibrationFollowUp.stage(current: .idle, preference: .dischargeToLimit) == .restoringLimit, "Default OS follow-up never adds a deep calibration cycle")
         check(SystemCalibrationFollowUp.stage(current: .idle, preference: .continueCalibration) == .dischargingToLow, "Explicit full-calibration preference continues the remaining stages")
         check(SystemCalibrationFollowUp.stage(current: .chargingToFull, preference: .dischargeToLimit) == .dischargingToLow, "An already requested user calibration continues correctly")

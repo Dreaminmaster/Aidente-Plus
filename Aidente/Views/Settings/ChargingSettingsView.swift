@@ -131,8 +131,9 @@ struct ChargingSettingsView: View {
                 }
                 HStack { Spacer(); Text(lastCalibration > 0 ? AidenteL10n.t("上次校准：", "Last calibration: ") + Date(timeIntervalSince1970: lastCalibration).formatted(date: .numeric, time: .omitted) : AidenteL10n.t("尚无 Aidente 校准记录", "No Aidente calibration recorded")).font(.caption).foregroundStyle(.secondary) }
             }
-            AidenteCard("macOS 校准后", subtitle: "凭新近系统证据识别校准，连续确认完全充满后执行所选动作；系统标志未释放时不会重复触发。", icon: "slider.horizontal.2.arrow.trianglehead.counterclockwise", colors: []) {
+            AidenteCard("macOS 校准后", subtitle: "凭新近系统证据识别校准，系统明确释放后恢复所选策略；默认不会启动主动放电或 Aidente 校准。", icon: "slider.horizontal.2.arrow.trianglehead.counterclockwise", colors: []) {
                 Picker("", selection: $afterSystemCalibration) {
+                    Text(AidenteL10n.t("恢复原充电策略", "Restore Charging Policy")).tag(AfterSystemCalibration.restorePolicy)
                     Text(AidenteL10n.t("放电至充电上限", "Discharge to Charge Limit")).tag(AfterSystemCalibration.dischargeToLimit)
                     Text(AidenteL10n.t("继续 Aidente 校准", "Continue Aidente Calibration")).tag(AfterSystemCalibration.continueCalibration)
                 }.labelsHidden()

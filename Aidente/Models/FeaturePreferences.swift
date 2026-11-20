@@ -31,7 +31,7 @@ extension Defaults.Keys {
     static let lastObservedFullCharge = Key<Double>("lastObservedFullCharge", default: 0, suite: AidenteRuntime.preferenceStore)
     static let systemCalibrationRecovery = Key<Bool>("systemCalibrationRecovery", default: false, suite: AidenteRuntime.preferenceStore)
     static let systemCalibrationSession = Key<Data?>("systemCalibrationSession", default: nil, suite: AidenteRuntime.preferenceStore)
-    static let afterSystemCalibration = Key<AfterSystemCalibration>("afterSystemCalibration", default: .dischargeToLimit, suite: AidenteRuntime.preferenceStore)
+    static let afterSystemCalibration = Key<AfterSystemCalibration>("afterSystemCalibration", default: .restorePolicy, suite: AidenteRuntime.preferenceStore)
     static let restoreWindowLayout = Key<Bool>("restoreWindowLayout", default: true, suite: AidenteRuntime.preferenceStore)
     static let backgroundDashboardUpdates = Key<Bool>("backgroundDashboardUpdates", default: true, suite: AidenteRuntime.preferenceStore)
     static let scheduleCatchUpEnabled = Key<Bool>("scheduleCatchUpEnabled", default: true, suite: AidenteRuntime.preferenceStore)

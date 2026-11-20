@@ -69,7 +69,7 @@ class MenuViewModel {
     var systemCalibrationActive: Bool { SystemCalibrationService.shared.isActive }
     var effectiveChargeLimit: Int {
         if chargeManager.calibrationStage == .restoringLimit { return Defaults[.calibrationOriginalLimit] }
-        return chargeLimitOverrideActive || calibrationActive || systemCalibrationActive ? 100 : Defaults[.chargeLimit]
+        return chargeLimitOverrideActive || calibrationActive ? 100 : Defaults[.chargeLimit]
     }
     var chargeLimitOverrideActive: Bool { chargeManager.chargeLimitOverrideActive }
     var forceDischargeActive: Bool { chargeManager.forceDischargeActive }
@@ -100,7 +100,7 @@ class MenuViewModel {
         return ["powerplug.fill", "pause.fill"]
     }
     var manualPauseActive: Bool { chargeManager.manualPauseActive }
-    var calibrationActive: Bool { chargeManager.calibrationStage != .idle || systemCalibrationActive }
+    var calibrationActive: Bool { chargeManager.calibrationStage != .idle }
     var operationStatusText: String { chargeManager.operationStatusTitle }
     var powerFlowPending: Bool { chargeManager.powerFlowPending }
     var chargeResumeRequested: Bool { chargeManager.chargeResumeRequested }

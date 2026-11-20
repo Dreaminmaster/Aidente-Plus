@@ -28,12 +28,12 @@ public enum GaugingLogParser {
 }
 
 public enum AfterSystemCalibration: String, Codable, CaseIterable, Sendable {
-    case dischargeToLimit, continueCalibration
+    case restorePolicy, dischargeToLimit, continueCalibration
 }
 
 /// Fresh explicit evidence identifies Apple's full-charge phase. Three distinct
-/// full-charge samples permit handoff; Apple may retain its override until the
-/// adapter is internally disconnected. Suppress replay until an explicit release.
+/// full-charge samples plus an explicit OS release permit handoff. A full
+/// battery alone must not start a competing discharge while Apple overrides it.
 public struct SystemCalibrationSession: Codable, Equatable, Sendable {
     public private(set) var startedAt: Date?
     public private(set) var latestEvent: Date?
@@ -68,7 +68,7 @@ public struct SystemCalibrationSession: Codable, Equatable, Sendable {
     public mutating func finishIfInterrupted(percentage: Int, isCharging: Bool) {
         if pending && released && fullSamples < 3 && percentage < 99 && !isCharging { finish() }
     }
-    public var canContinue: Bool { pending && fullSamples >= 3 }
+    public var canContinue: Bool { pending && released && fullSamples >= 3 }
     public mutating func finish() {
         // Do not restart the same calibration if the OS keeps publishing 1
         // while the chosen follow-up disconnects the adapter to release it.
@@ -82,7 +82,12 @@ public enum SystemCalibrationFollowUp {
         switch current {
         case .rechargingToFull, .holdingAtFull, .restoringLimit: return .restoringLimit
         case .chargingToFull, .dischargingToLow: return .dischargingToLow
-        case .idle: return preference == .continueCalibration ? .dischargingToLow : .restoringLimit
+        case .idle:
+            switch preference {
+            case .restorePolicy: return .idle
+            case .dischargeToLimit: return .restoringLimit
+            case .continueCalibration: return .dischargingToLow
+            }
         }
     }
 }

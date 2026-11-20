@@ -147,6 +147,9 @@ class ChargeManager {
         return AidenteL10n.controlError(rawError)
     }
     var powerFlowPending: Bool {
+        // An explicit OS override suspends our physical hold/resume check;
+        // it does not mean the helper or saved policy has disappeared.
+        if operationStatus == .systemCalibration { return false }
         guard let request = pendingPowerRequest, request.managed,
               batteryService.adapterMetrics.adapterConnected else { return false }
         let fresh = batteryService.lastPowerSampleDate.map { Date().timeIntervalSince($0) < 15 } ?? false
@@ -334,10 +337,12 @@ class ChargeManager {
             isCharging: batteryService.metrics.isCharging, batteryPower: batteryService.metrics.batteryPower,
             sampleAge: batteryService.lastPowerSampleDate.map { Date().timeIntervalSince($0) }),
             date: batteryService.lastPowerSampleDate, percentage: batteryPercentage, isCharging: batteryService.metrics.isCharging)
-        if system.isActive && !system.session.canContinue {
+        if system.isActive && (!system.session.canContinue || !system.session.released) {
             operationStatus = .systemCalibration
             clearControlErrors()
-            requestPower(charging: true, adapter: true, managed: true, reason: system.status)
+            // Retain the saved ceiling during Apple's override. Do not turn
+            // an observed OS calibration into our own charge-to-100 request.
+            requestPower(charging: !manualPauseActive && !heatProtectionPaused, adapter: true, managed: true, reason: system.status)
             updateSleepAssertion(shouldPreventSleep: false)
             return
         }
@@ -347,8 +352,13 @@ class ChargeManager {
                 if calibrationStage == .idle { Defaults[.calibrationOriginalLimit] = Defaults[.chargeLimit] }
                 let continuing = (calibrationStage != .idle && !Defaults[.systemCalibrationRecovery]) || Defaults[.afterSystemCalibration] == .continueCalibration
                 Defaults[.systemCalibrationRecovery] = !continuing
-                setCalibrationStage(SystemCalibrationFollowUp.stage(current: calibrationStage, preference: Defaults[.afterSystemCalibration]))
-                manualPauseActive = false; Defaults[.manualPauseActive] = false; forceDischargeActive = false
+                let next = SystemCalibrationFollowUp.stage(current: calibrationStage, preference: Defaults[.afterSystemCalibration])
+                setCalibrationStage(next)
+                if next != .idle {
+                    manualPauseActive = false; Defaults[.manualPauseActive] = false; forceDischargeActive = false
+                } else {
+                    Defaults[.systemCalibrationRecovery] = false
+                }
             }
         }
         advanceCalibrationIfNeeded(batteryPercentage: batteryPercentage)
@@ -597,7 +607,7 @@ class ChargeManager {
     }
 
     private func requestPower(charging: Bool, adapter: Bool, managed: Bool, reason: String? = nil) {
-        let normalLimit = calibrationStage == .idle && !topUpActive && !SystemCalibrationService.shared.isActive
+        let normalLimit = calibrationStage == .idle && !topUpActive
         let standardCeiling = normalLimit ? min(100, max(20, Defaults[.chargeLimit])) : 100
         let ceiling = usesNativeChargeLimit && !adapter
             ? NativeChargePolicy.dischargeCeiling(standard: standardCeiling, phase: calibrationStage,
@@ -691,6 +701,14 @@ class ChargeManager {
                 guard let self, pendingPowerRequest == request, !isSystemSleeping else { return }
                 await batteryService.refreshPowerForVerification()
                 guard !Task.isCancelled, pendingPowerRequest == request, !isSystemSleeping else { return }
+                if SystemCalibrationService.shared.isActive {
+                    verification = ChargeHoldVerification()
+                    resumeVerification = ChargeResumeVerification()
+                    powerHoldVerified = false
+                    powerDischargeVerified = false
+                    powerFlowError = nil
+                    continue
+                }
                 guard batteryService.adapterMetrics.adapterConnected else {
                     verification = ChargeHoldVerification()
                     resumeVerification = ChargeResumeVerification()

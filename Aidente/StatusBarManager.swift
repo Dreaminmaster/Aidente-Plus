@@ -253,13 +253,17 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         popoverPanel = panel
         viewModel.menuWillOpen()
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self, weak panel] _ in
+            let point = NSEvent.mouseLocation
             Task { @MainActor in
                 guard let self, let panel, self.popoverPanel === panel else { return }
+                // Status-item mouseDown must be left to its mouseUp toggle.
+                guard !self.isPointerOverStatusItem(at: point) else { return }
                 self.dismissMenu()
             }
         }
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self, weak panel] event in
             MainActor.assumeIsolated {
+                if self?.isPointerOverStatusItem() == true { return }
                 if let window = event.window, window !== panel,
                    window.sheetParent !== panel, window.parent !== panel,
                    panel?.attachedSheet == nil,
@@ -272,6 +276,12 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         panel.orderFrontRegardless()
         panel.makeKey()
         panelLogger.notice("PANEL_SHOWN visible=\(panel.isVisible) activeSpace=\(panel.isOnActiveSpace) key=\(panel.isKeyWindow)")
+    }
+
+    private func isPointerOverStatusItem(at point: NSPoint = NSEvent.mouseLocation) -> Bool {
+        guard let button = statusItem.button, let window = button.window else { return false }
+        let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
+        return rect.contains(point)
     }
 
     private func dismissMenu() {

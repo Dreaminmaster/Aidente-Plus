@@ -3,6 +3,7 @@ import Defaults
 import Foundation
 import Darwin
 import Observation
+import os.log
 
 @MainActor @Observable final class SystemCalibrationService {
     static let shared = SystemCalibrationService()
@@ -11,6 +12,7 @@ import Observation
     private(set) var checking = false
     var canDiscardStaleSession: Bool { session.pending && Date().timeIntervalSince(session.latestEvent ?? .distantPast) > 120 }
     private(set) var error: String?
+    private let logger = Logger(subsystem: "com.aidente.app", category: "SystemCalibration")
     private var task: Task<Void, Never>?
     var onEvidenceChanged: (() -> Void)?
     init() {
@@ -19,10 +21,10 @@ import Observation
     var isActive: Bool { session.pending }
     var status: String {
         if session.handoffPendingRelease { return AidenteL10n.t("已确认充满并进入后续流程；如果电量不下降，请重新连接电源。", "Full charge confirmed and follow-up started. Reconnect power if discharge does not begin.") }
-        if session.waitingForRelease { return AidenteL10n.t("已充满，等待 macOS 释放校准限制；持续不释放时可拔插电源。", "Full charge confirmed; waiting for macOS to release its override. Reconnect power if it remains active.") }
+        if session.waitingForRelease { return AidenteL10n.t("已确认充满，等待 macOS 释放系统校准覆盖；Aidente 保留原上限，不会自行开始放电。", "Full charge confirmed; waiting for macOS to release its override. Aidente retains the saved limit and does not start discharging on its own.") }
         if session.released { return AidenteL10n.t("系统已释放校准限制，正在确认充满状态。", "macOS released its override; confirming full charge.") }
         if canDiscardStaleSession { return AidenteL10n.t("先前检测到系统校准；目前等待系统结束的明确信号。", "System calibration was previously detected; waiting for explicit completion evidence.") }
-        if session.pending { return AidenteL10n.t("macOS 正在强制充满以校准电池，暂时无法停止。", "macOS is forcing a full charge for battery calibration; it cannot be interrupted.") }
+        if session.pending { return AidenteL10n.t("检测到 macOS 充满校准覆盖；系统可能暂时忽略上限。这不是 Aidente 完整校准，原上限保留，等待系统明确释放。", "macOS full-charge calibration override detected. The system may temporarily ignore the limit. This is not an Aidente calibration cycle; the saved limit is retained until macOS releases its override.") }
         if let error { return error }
         return AidenteL10n.t("未检测到新近的系统校准事件", "No recent system calibration event detected")
     }
@@ -56,7 +58,10 @@ import Observation
         error = nil
         let before = session
         for event in evidence.sorted(by: { $0.date < $1.date }) { session.observe(event, now: Date()) }
-        if before != session { save(); onEvidenceChanged?() }
+        if before != session {
+            logger.notice("OS_CALIBRATION_EVIDENCE native=\(native.map(String.init) ?? "unknown", privacy: .public) pending=\(self.session.pending) released=\(self.session.released)")
+            save(); onEvidenceChanged?()
+        }
     }
     func recordFullSample(full: Bool, date: Date?, percentage: Int, isCharging: Bool) {
         let before = session

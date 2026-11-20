@@ -89,7 +89,7 @@ struct PopoverStatusExplanation: View {
             return AidenteL10n.t("当前使用电池供电。接入电源后将按设定的充电上限管理。", "Running on battery. The charge limit will apply after connecting power.")
         }
         if viewModel.systemCalibrationActive {
-            return AidenteL10n.t("macOS 正在执行系统校准；完成后会按所选方式恢复。", "macOS is calibrating the battery. Your selected recovery behavior will apply afterwards.")
+            return SystemCalibrationService.shared.status
         }
         if viewModel.calibrationActive { return viewModel.operationStatusText }
         if viewModel.chargeLimitOverrideActive {
