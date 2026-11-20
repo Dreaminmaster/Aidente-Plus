@@ -156,6 +156,11 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         settingsWindowController.showSettings(tab: .menuBar)
     }
 
+    @objc private func openUsageGuide() {
+        dismissMenu()
+        BatteryManagementSetup.shared.showGuide()
+    }
+
     @objc private func openDashboard() { showDashboardWindow() }
     @objc private func quitFromQuickMenu() { viewModel.quit() }
 
@@ -182,6 +187,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
                 for (title, action) in [
                     (AidenteL10n.t("仪表盘", "Dashboard"), #selector(openDashboard)),
                     (AidenteL10n.t("菜单栏设置", "Menu Bar Settings"), #selector(openMenuBarSettings)),
+                    (AidenteL10n.t("使用引导", "Usage Guide"), #selector(openUsageGuide)),
                     (AidenteL10n.t("退出 Aidente", "Quit Aidente"), #selector(quitFromQuickMenu))
                 ] {
                     let item = NSMenuItem(title: title, action: action, keyEquivalent: "")

@@ -337,7 +337,10 @@ class ChargeManager {
             isCharging: batteryService.metrics.isCharging, batteryPower: batteryService.metrics.batteryPower,
             sampleAge: batteryService.lastPowerSampleDate.map { Date().timeIntervalSince($0) }),
             date: batteryService.lastPowerSampleDate, percentage: batteryPercentage, isCharging: batteryService.metrics.isCharging)
-        if system.isActive && (!system.session.canContinue || !system.session.released) {
+        if system.session.canRestorePolicy(preference: Defaults[.afterSystemCalibration], appStage: calibrationStage) {
+            system.didContinue()
+        }
+        if system.isActive && !system.session.canContinue {
             operationStatus = .systemCalibration
             clearControlErrors()
             // Retain the saved ceiling during Apple's override. Do not turn

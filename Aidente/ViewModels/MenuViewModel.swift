@@ -74,12 +74,16 @@ class MenuViewModel {
     var chargeLimitOverrideActive: Bool { chargeManager.chargeLimitOverrideActive }
     var forceDischargeActive: Bool { chargeManager.forceDischargeActive }
     private var dischargeProgress = DischargeProgress()
+    private var hasFreshPowerSample: Bool {
+        guard let lastPowerSampleDate else { return false }
+        return (-1..<15).contains(Date().timeIntervalSince(lastPowerSampleDate))
+    }
     var trackMotion: ChargeTrackMotion {
         ChargeTrackMotion.observed(isCharging: isCharging, batteryPower: batteryPower,
-            fresh: lastPowerSampleDate.map { Date().timeIntervalSince($0) < 15 } ?? false)
+            fresh: hasFreshPowerSample)
     }
     var dischargeProgressText: String? {
-        guard dischargeRequested, let watts = dischargeProgress.watts, watts < -1, !isCharging else { return nil }
+        guard dischargeRequested, hasFreshPowerSample, let watts = dischargeProgress.watts, watts < -1, !isCharging else { return nil }
         let power = String(format: "%.1f", -watts)
         let used = dischargeProgress.consumedMilliampHours
         let hardware = hasHardwarePercentage

@@ -68,6 +68,9 @@ public struct SystemCalibrationSession: Codable, Equatable, Sendable {
     public mutating func finishIfInterrupted(percentage: Int, isCharging: Bool) {
         if pending && released && fullSamples < 3 && percentage < 99 && !isCharging { finish() }
     }
+    public func canRestorePolicy(preference: AfterSystemCalibration, appStage: CalibrationProgress) -> Bool {
+        pending && released && preference == .restorePolicy && appStage == .idle
+    }
     public var canContinue: Bool { pending && released && fullSamples >= 3 }
     public mutating func finish() {
         // Do not restart the same calibration if the OS keeps publishing 1

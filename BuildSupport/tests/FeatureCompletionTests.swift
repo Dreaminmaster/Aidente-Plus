@@ -241,6 +241,10 @@ import AidenteShared
         var interrupted = SystemCalibrationSession()
         interrupted.observe(GaugingEvent(date: now, active: true), now: now)
         interrupted.observe(GaugingEvent(date: now.addingTimeInterval(1), active: false), now: now.addingTimeInterval(1))
+        check(interrupted.canRestorePolicy(preference: .restorePolicy, appStage: .idle),
+              "A released override restores the ordinary policy without waiting for a full battery")
+        check(!interrupted.canRestorePolicy(preference: .continueCalibration, appStage: .idle),
+              "A chosen calibration follow-up still requires full confirmation")
         interrupted.finishIfInterrupted(percentage: 80, isCharging: false)
         check(!interrupted.pending && !interrupted.canContinue, "Interrupted OS calibration unlocks controls without a discharge")
         session.observe(GaugingEvent(date: now.addingTimeInterval(9), active: true), now: now.addingTimeInterval(9))

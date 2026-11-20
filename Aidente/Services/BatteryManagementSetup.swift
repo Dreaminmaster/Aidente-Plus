@@ -3,7 +3,7 @@ import Defaults
 import Observation
 import SwiftUI
 
-@MainActor @Observable final class BatteryManagementSetup {
+@MainActor @Observable final class BatteryManagementSetup: NSObject, NSWindowDelegate {
     static let shared=BatteryManagementSetup()
     private(set) var enabling=false
     var onEnabled:(()->Void)?
@@ -52,34 +52,32 @@ import SwiftUI
             Defaults[.didCompleteBatterySetup]=true;return
         }
         guard !AidenteRuntime.isUIPreview || CommandLine.arguments.contains("--setup-preview") else { return }
-        let view=AidenteAppearanceRoot { BatteryWelcomeView(onLater:{ [weak self] in
-            Defaults[.didCompleteBatterySetup]=true;self?.welcome?.close()
-        },onEnabled:{ [weak self] in self?.welcome?.close() }) }
-        let window=NSWindow(contentRect:NSRect(x:0,y:0,width:470,height:330),styleMask:[.titled,.closable],backing:.buffered,defer:false)
-        window.title="Aidente";window.isReleasedWhenClosed=false
-        window.contentView=NSHostingView(rootView:view);window.center();window.makeKeyAndOrderFront(nil)
-        welcome=window;NSApp.activate(ignoringOtherApps:true)
+        showGuide()
     }
-}
 
-private struct BatteryWelcomeView:View {
-    let onLater:()->Void,onEnabled:()->Void
-    @State private var error:String?
-    private let setup=BatteryManagementSetup.shared
-    var body:some View {
-        VStack(alignment:.leading,spacing:20) {
-            Label(AidenteL10n.t("欢迎使用 Aidente","Welcome to Aidente"),systemImage:"battery.100").font(.title2.bold())
-            Text(AidenteL10n.t("查看电池信息无需授权。","Viewing battery information requires no authorization."))
-            Text(AidenteL10n.t("限充和指示灯控制需要安装同一个后台服务。你点击启用后，才会请求 macOS 管理员授权；取消后可继续仅查看。","Charge limits and LED control need the same helper. macOS administrator authorization is requested only after you choose Enable. Canceling keeps monitoring available."))
-                .foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
-            HStack {
-                Button(AidenteL10n.t("稍后，仅查看","Later, View Only"),action:onLater)
-                Spacer()
-                Button(AidenteL10n.t("启用电池管理","Enable Battery Management")) {
-                    Task { do { if try await setup.enable() { onEnabled() } } catch { self.error=error.localizedDescription } }
-                }.buttonStyle(.borderedProminent).disabled(setup.enabling)
-            }
-        }.padding(28).frame(width:470)
+    func showGuide() {
+        if let welcome {
+            welcome.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let view = AidenteAppearanceRoot {
+            BatteryUsageGuide(onClose: { [weak self] in self?.welcome?.close() })
+        }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 390),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = AidenteL10n.t("Aidente 使用引导", "Aidente Guide")
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.contentView = NSHostingView(rootView: view)
+        welcome = window
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        Defaults[.didCompleteBatterySetup] = true
+        welcome = nil
     }
 }

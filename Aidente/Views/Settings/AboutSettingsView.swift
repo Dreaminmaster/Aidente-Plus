@@ -10,6 +10,13 @@ struct AboutSettingsView: View {
 
     var body: some View {
         AidenteSettingsPage {
+            AidenteCard("使用引导", subtitle: "查看如何限充、主动放电和判断当前状态。",
+                        icon: "book", colors: [AidenteTheme.sky]) {
+                Button(AidenteL10n.t("打开使用引导", "Open Usage Guide")) {
+                    BatteryManagementSetup.shared.showGuide()
+                }
+            }
+
             UninstallSettingsView()
 
             AidenteCard(

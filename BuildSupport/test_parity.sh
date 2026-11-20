@@ -15,6 +15,6 @@ swiftc -parse-as-library BuildSupport/tests/MenuBarConfigurationTests.swift \
     Aidente/DefaultsKeys.swift Aidente/AidenteL10n.swift \
     -sdk "$sdk" -target arm64-apple-macosx14.0 \
     -I Build/Modules -I Vendor/SMCKit/Sources/SMC/include \
-    -L Build -lDefaults -lsmc_power -lSMCKit Build/Objects/smc.o \
+    -L Build -lDefaults -lAidenteShared -lsmc_power -lSMCKit Build/Objects/smc.o \
     -framework IOKit -o Build/MenuBarConfigurationTests
 Build/MenuBarConfigurationTests --ui-preview

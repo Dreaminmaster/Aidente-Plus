@@ -47,6 +47,10 @@ struct DashboardPopoverView: View {
     @State private var dragged: String?
     private let editor = PopoverEditorState.shared
     private var canControl: Bool { viewModel.manageChargingEnabled && !AidenteRuntime.isUIPreview && !viewModel.systemCalibrationActive }
+    private var canEditLimit: Bool {
+        !viewModel.chargeLimitOverrideActive && !viewModel.calibrationActive && !viewModel.systemCalibrationActive
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 14) {
@@ -63,7 +67,7 @@ struct DashboardPopoverView: View {
                             Text("%")
                             Button(AidenteL10n.t("好", "OK")) { commitTypedLimit() }.keyboardShortcut(.defaultAction)
                         }.padding(12)
-                    }.help(AidenteL10n.t("输入目标百分比", "Enter a target percentage"))
+                    }.disabled(!canEditLimit).help(AidenteL10n.t("输入目标百分比", "Enter a target percentage"))
                     Spacer(minLength: 0)
                     Button { viewModel.toggleForceDischarge() } label: {
                         HStack(spacing: 16) {
@@ -92,7 +96,7 @@ struct DashboardPopoverView: View {
                     showPercentage: showPercentage, adapterConnected: viewModel.adapterConnected, chargingMode: viewModel.chargingMode, motion: viewModel.trackMotion, sailing: viewModel.sailingActive,
                     minimum: below80 ? 20 : 80,
                     sailingLower: sailing && !viewModel.calibrationActive && !viewModel.chargeLimitOverrideActive ? max(20, (editingLimit ? Int(draft.rounded()) : limit) - sailingRange) : nil,
-                    enabled: !viewModel.chargeLimitOverrideActive && !viewModel.calibrationActive && !viewModel.systemCalibrationActive,
+                    enabled: canEditLimit,
                     onEditing: { editing in
                         editingLimit = editing
                         if !editing { limit = min(100, max(below80 ? 20 : 80, Int(draft.rounded()))); draft = Double(limit) }
@@ -205,6 +209,13 @@ struct DashboardPopoverView: View {
         .disabled(CompleteUninstaller.shared.isRunning)
         .onAppear { draft = Double(viewModel.effectiveChargeLimit) }
         .onDisappear { editingLimit = false; draft = Double(viewModel.effectiveChargeLimit) }
+        .onChange(of: canEditLimit) { _, enabled in
+            if !enabled {
+                editingLimit = false
+                enteringLimit = false
+                draft = Double(viewModel.effectiveChargeLimit)
+            }
+        }
         .onChange(of: viewModel.effectiveChargeLimit) { _, value in if !editingLimit { draft = Double(value) } }
         .onChange(of: widgetIDs) { _, _ in editor.updateSize?() }
         .onChange(of: editor.isEditing) { _, editing in
@@ -222,7 +233,12 @@ struct DashboardPopoverView: View {
             Button(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
         }
     }
-    private func commitTypedLimit() { limit = min(100, max(below80 ? 20 : 80, typedLimit)); draft = Double(limit); enteringLimit = false }
+    private func commitTypedLimit() {
+        enteringLimit = false
+        guard canEditLimit else { return }
+        limit = min(100, max(below80 ? 20 : 80, typedLimit))
+        draft = Double(limit)
+    }
     private func move(_ widget: PopoverWidget, _ offset: Int) {
         guard let i = widgetIDs.firstIndex(of: widget.id), widgetIDs.indices.contains(i + offset) else { return }
         widgetIDs.swapAt(i, i + offset)
@@ -473,12 +489,12 @@ private struct PopoverChargeSlider: View {
                 }
                 setTarget((dragOrigin ?? value) + Double(event.translation.width / width) * 100)
             }.onEnded { _ in
-                guard enabled else { return }
-                onEditing(false)
-                dragOrigin = nil
+                defer { dragOrigin = nil }
+                if enabled && dragOrigin != nil { onEditing(false) }
             })
         }.frame(height: 20)
         .onDisappear { dragOrigin = nil }
+        .onChange(of: enabled) { _, enabled in if !enabled { dragOrigin = nil } }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(AidenteL10n.t("充电上限", "Charge Limit"))
         .accessibilityValue(AidenteL10n.t("上限\(Int(value))%，当前电量\(percentage)%", "Limit \(Int(value))%, battery \(percentage)%"))
