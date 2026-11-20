@@ -6,6 +6,7 @@ import AidenteShared
 @Observable @MainActor final class PopoverEditorState {
     static let shared = PopoverEditorState()
     var isEditing = false
+    var isAddingWidget = false
     var requestOpen: (() -> Void)?
     var updateSize: (() -> Void)?
     func beginEditing() { isEditing = true; requestOpen?() }
@@ -19,8 +20,8 @@ import AidenteShared
         if calibrating && !result.contains(.careActions) { result.insert(.careActions, at: 0) }
         return result
     }
-    static func height(widgets: [String], editing: Bool, calibrating: Bool = false) -> CGFloat {
-        min(620, 134 + (editing ? 64 : 0) + CGFloat(visibleWidgets(widgets, editing: editing, calibrating: calibrating).count) * 140)
+    static func height(widgets: [String], editing: Bool, adding: Bool = false, calibrating: Bool = false) -> CGFloat {
+        min(620, 134 + (editing ? 64 : 0) + (adding && editing ? 240 : 0) + CGFloat(visibleWidgets(widgets, editing: editing, calibrating: calibrating).count) * 140)
     }
 }
 
@@ -102,25 +103,19 @@ struct DashboardPopoverView: View {
                 HStack {
                     Text(AidenteL10n.t("编辑小组件", "Edit Widgets")).font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Menu(AidenteL10n.t("添加", "Add")) {
-                        Section(AidenteL10n.t("添加小组件", "Add Widgets")) {
-                            ForEach(PopoverWidget.allCases.filter { !$0.isGraph && !widgetIDs.contains($0.id) }) { widget in
-                                Button(widget.title) { widgetIDs.append(widget.id) }
-                            }
-                        }
-                        Section(AidenteL10n.t("添加曲线", "Add Graphs")) {
-                            ForEach(PopoverWidget.allCases.filter { $0.isGraph && !widgetIDs.contains($0.id) }) { widget in
-                                Button(widget.title) { widgetIDs.append(widget.id) }
-                            }
-                        }
-                        Divider()
-                        Button(AidenteL10n.t("简洁布局", "Minimalist")) { widgetIDs = PopoverWidget.minimalist }
-                        Button(AidenteL10n.t("健康优先布局", "Health Focused")) { widgetIDs = PopoverWidget.healthFocused }
-                        Button(AidenteL10n.t("详细布局", "Power User")) { widgetIDs = PopoverWidget.powerUser }
-                        Button(AidenteL10n.t("恢复紧凑布局", "Restore Compact Layout")) { widgetIDs = [] }
-                    }.fixedSize()
+                    Button {
+                        editor.isAddingWidget.toggle()
+                    } label: {
+                        Label(AidenteL10n.t("添加", "Add"), systemImage: editor.isAddingWidget ? "chevron.up" : "plus")
+                    }.accessibilityLabel(AidenteL10n.t("添加小组件", "Add Widgets"))
                     Button(AidenteL10n.t("完成", "Done")) { editor.isEditing = false }
                 }.padding(.horizontal, 16).padding(.bottom, 12)
+            }
+            if editor.isEditing && editor.isAddingWidget {
+                PopoverWidgetPicker(ids: $widgetIDs, isPresented: Binding(
+                    get: { editor.isAddingWidget }, set: { editor.isAddingWidget = $0 }
+                ))
+                .padding(.horizontal, 16).padding(.bottom, 12)
             }
             if editor.isEditing && widgetIDs.isEmpty {
                 Text(AidenteL10n.t("从“添加”中选择小组件，拖动可调整顺序。", "Choose widgets from Add, then drag to reorder them."))
@@ -204,7 +199,7 @@ struct DashboardPopoverView: View {
             }.buttonStyle(.borderless).font(.system(size: 11))
                 .padding(.horizontal, 16).frame(height: 41)
         }
-        .frame(width: 402, height: PopoverLayout.height(widgets: widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive))
+        .frame(width: 402, height: PopoverLayout.height(widgets: widgetIDs, editing: editor.isEditing, adding: editor.isAddingWidget, calibrating: viewModel.calibrationActive))
         .background(AidenteMaterialLayer())
         .tint(.accentColor)
         .disabled(CompleteUninstaller.shared.isRunning)
@@ -212,7 +207,11 @@ struct DashboardPopoverView: View {
         .onDisappear { editingLimit = false; draft = Double(viewModel.effectiveChargeLimit) }
         .onChange(of: viewModel.effectiveChargeLimit) { _, value in if !editingLimit { draft = Double(value) } }
         .onChange(of: widgetIDs) { _, _ in editor.updateSize?() }
-        .onChange(of: editor.isEditing) { _, _ in editor.updateSize?() }
+        .onChange(of: editor.isEditing) { _, editing in
+            if !editing { editor.isAddingWidget = false }
+            editor.updateSize?()
+        }
+        .onChange(of: editor.isAddingWidget) { _, _ in editor.updateSize?() }
         .onChange(of: compactEnergyWidget) { _, _ in editor.updateSize?() }
         .onChange(of: EnergyModeService.shared.isNonAutomaticActive) { _, _ in editor.updateSize?() }
         .onChange(of: viewModel.calibrationActive) { _, _ in editor.updateSize?() }

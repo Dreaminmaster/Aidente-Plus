@@ -35,9 +35,14 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
 
         PopoverEditorState.shared.requestOpen = { [weak self] in self?.showPopoverForPreview() }
         PopoverEditorState.shared.updateSize = { [weak self] in
-            guard let self, let panel = self.popoverPanel else { return }
-            let size = NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, calibrating: viewModel.calibrationActive))
-            panel.setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - size.height, width: size.width, height: size.height), display: true)
+            guard let self else { return }
+            let size = NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, adding: PopoverEditorState.shared.isAddingWidget, calibrating: viewModel.calibrationActive))
+            for window in [self.popoverPanel, self.previewWindow, self.dashboardWindow].compactMap({ $0 }) {
+                let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: size)).size
+                let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+                let bottom = max(visible?.minY ?? window.frame.minY, window.frame.maxY - frameSize.height)
+                window.setFrame(NSRect(x: window.frame.minX, y: bottom, width: frameSize.width, height: frameSize.height), display: true)
+            }
         }
         setupPersistentHostingView()
         startDisplayObservation()
@@ -235,7 +240,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         hosting.view.wantsLayer = true
         hosting.view.layer?.cornerRadius = 15
         hosting.view.layer?.masksToBounds = true
-        let size = NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, calibrating: viewModel.calibrationActive))
+        let size = NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, adding: PopoverEditorState.shared.isAddingWidget, calibrating: viewModel.calibrationActive))
         let pointer = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? anchorWindow?.screen ?? NSScreen.main
         let bounds = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -295,7 +300,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         let window = NSWindow(contentViewController: hostingController)
         window.title = AidenteL10n.t("Aidente 主菜单", "Aidente Dashboard")
         window.styleMask = [.titled, .closable, .miniaturizable]
-        window.setContentSize(NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, calibrating: viewModel.calibrationActive)))
+        window.setContentSize(NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, adding: PopoverEditorState.shared.isAddingWidget, calibrating: viewModel.calibrationActive)))
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
@@ -325,7 +330,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         let hostingController = NSHostingController(rootView: makeDashboardRootView())
         let panel = AidentePreviewPanel(contentViewController: hostingController)
         panel.styleMask = [.borderless]
-        panel.setContentSize(NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, calibrating: viewModel.calibrationActive)))
+        panel.setContentSize(NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets], editing: PopoverEditorState.shared.isEditing, adding: PopoverEditorState.shared.isAddingWidget, calibrating: viewModel.calibrationActive)))
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true

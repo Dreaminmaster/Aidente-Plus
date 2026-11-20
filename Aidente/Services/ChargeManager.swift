@@ -165,6 +165,7 @@ class ChargeManager {
     }
     var chargeResumeRequested: Bool { pendingPowerRequest?.charging == true }
     var operationStatusTitle: String {
+        if !safetyStopReason.isEmpty { return AidenteL10n.t("放电保护已触发", "Discharge protection triggered") }
         if controlError != nil { return AidenteL10n.t("充电控制未生效") }
         if case .discharging(let target) = operationStatus, powerFlowPending {
             return AidenteL10n.t("放电至 \(target)% · 等待实际功率确认", "Discharge to \(target)% · Verifying power flow")
@@ -646,6 +647,10 @@ class ChargeManager {
                             : "电量显示长时间未更新或安全读数不可用，已停止放电并恢复原设置。充电管理已关闭；请在读数恢复后手动启用。"
                         let level = batteryService.metrics.batteryPercentage
                         safetyStopReason = AidenteL10n.t("放电未完成（目标\(request.chargeCeiling)%，当前系统读数\(level)%）。", "Discharge not completed (target \(request.chargeCeiling)%, current system reading \(level)%). ") + safetyStopReason
+                        if batteryService.metrics.hasHardwarePercentage {
+                            let hardware = batteryService.metrics.hardwareBatteryPercentage
+                            safetyStopReason += AidenteL10n.t(" 最近读取的硬件容量换算为\(hardware)%；它与系统百分比使用不同刻度，不能视为已达目标或继续无限放电。", " Latest hardware-capacity ratio: \(hardware)%. It uses a different scale from the system percentage; this is not target completion and discharge cannot continue without a safe bound.")
+                        }
                         logger.error("DISCHARGE_STOP_OBSERVED target=\(request.chargeCeiling, privacy: .public) display=\(level, privacy: .public) hardware=\(self.batteryService.metrics.hardwareBatteryPercentage, privacy: .public) batteryW=\(self.batteryService.metrics.batteryPower, privacy: .public)")
                         Defaults[.lastDischargeSafetyStopReason] = safetyStopReason
                         forceDischargeActive = false

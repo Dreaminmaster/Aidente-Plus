@@ -82,8 +82,11 @@ class MenuViewModel {
         guard dischargeRequested, let watts = dischargeProgress.watts, watts < -1, !isCharging else { return nil }
         let power = String(format: "%.1f", -watts)
         let used = dischargeProgress.consumedMilliampHours
-        return AidenteL10n.t("实测放电 \(power) W · 本次容量减少 \(used) mAh。系统百分比可能暂未更新。",
-            "Measured discharge \(power) W · capacity down \(used) mAh this session. The system percentage may update later.")
+        let hardware = hasHardwarePercentage
+            ? AidenteL10n.t(" · 硬件容量换算\(hardwarePercentage)%", " · hardware-capacity ratio \(hardwarePercentage)%") : ""
+        return AidenteL10n.t("实测放电 \(power) W", "Measured discharge \(power) W") + hardware
+            + AidenteL10n.t(" · 本次容量减少 \(used) mAh。系统百分比可能暂未更新。",
+                " · capacity down \(used) mAh this session. The system percentage may update later.")
     }
     var dischargeRequested: Bool {
         if case .discharging = chargeManager.operationStatus { return true }
