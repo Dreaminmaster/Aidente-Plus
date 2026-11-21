@@ -24,7 +24,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
     private var panelSize: NSSize {
         let editor = PopoverEditorState.shared
         return NSSize(width: 402, height: PopoverLayout.height(widgets: Defaults[.popoverWidgets],
-            editing: editor.isEditing, adding: editor.isAddingWidget, options: editor.isShowingOptions,
+            editing: editor.isEditing, adding: editor.isAddingWidget,
             calibrating: viewModel.calibrationActive))
     }
 
@@ -301,7 +301,6 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         guard let panel = popoverPanel else { return }
         // Clear synchronously; a delayed close notification cannot leave a stale guard.
         popoverPanel = nil
-        PopoverEditorState.shared.isShowingOptions = false
         removeMenuMonitors()
         viewModel.menuDidClose()
         panel.close()
@@ -390,7 +389,6 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
             guard let closedWindow = notification.object as? NSWindow else { return }
             if closedWindow === popoverPanel {
                 popoverPanel = nil
-                PopoverEditorState.shared.isShowingOptions = false
                 removeMenuMonitors()
                 viewModel.menuDidClose()
             } else if closedWindow === dashboardWindow {
