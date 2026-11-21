@@ -18,7 +18,7 @@ struct GeneralSettingsView: View {
     var body: some View {
         AidenteSettingsPage {
             AidenteSettingToggle(AidenteL10n.t("在 Dock 中显示", "Show in Dock"),
-                subtitle: AidenteL10n.t("保留 Dock 图标与应用菜单，方便重新打开和退出。", "Keep the Dock icon and app menu available for reopening and quitting."),
+                subtitle: AidenteL10n.t("也可在 Dock 右键选择“隐藏 Dock 图标”。固定或最近使用的图标由 macOS 管理，可将剩余图标拖出 Dock 移除。", "You can also right-click and choose Hide Dock Icon. macOS manages pinned and recent icons. Drag any remaining shortcut out of the Dock to remove it."),
                 icon: "dock.rectangle", colors: [], isOn: $showDockIcon)
             AidenteCard(
                 "语言",

@@ -7,6 +7,7 @@ import AidenteShared
     static let shared = PopoverEditorState()
     var isEditing = false
     var isAddingWidget = false
+    var isShowingOptions = false
     var requestOpen: (() -> Void)?
     var updateSize: (() -> Void)?
     func beginEditing() { isEditing = true; requestOpen?() }
@@ -20,8 +21,9 @@ import AidenteShared
         if calibrating && !result.contains(.careActions) { result.insert(.careActions, at: 0) }
         return result
     }
-    static func height(widgets: [String], editing: Bool, adding: Bool = false, calibrating: Bool = false) -> CGFloat {
-        min(620, 134 + (editing ? 64 : 0) + (adding && editing ? 240 : 0) + CGFloat(visibleWidgets(widgets, editing: editing, calibrating: calibrating).count) * 140)
+    static func height(widgets: [String], editing: Bool, adding: Bool = false, options: Bool = false, calibrating: Bool = false) -> CGFloat {
+        if options { return 520 }
+        return min(620, 134 + (editing ? 64 : 0) + (adding && editing ? 240 : 0) + CGFloat(visibleWidgets(widgets, editing: editing, calibrating: calibrating).count) * 140)
     }
 }
 
@@ -40,6 +42,7 @@ struct DashboardPopoverView: View {
     @Default(.automaticDischarge) private var automaticDischarge
     @Default(.popoverMetricIDs) private var specIDs
     @Default(.compactEnergyWidget) private var compactEnergyWidget
+    @Default(.showDockIcon) private var showDockIcon
     @State private var draft = 80.0
     @State private var editingLimit = false
     @State private var enteringLimit = false
@@ -103,7 +106,7 @@ struct DashboardPopoverView: View {
                     })
 
             }.padding(16)
-            if editor.isEditing {
+            if editor.isEditing && !editor.isShowingOptions {
                 HStack {
                     Text(AidenteL10n.t("编辑小组件", "Edit Widgets")).font(.caption).foregroundStyle(.secondary)
                     Spacer()
@@ -115,26 +118,27 @@ struct DashboardPopoverView: View {
                     Button(AidenteL10n.t("完成", "Done")) { editor.isEditing = false }
                 }.padding(.horizontal, 16).padding(.bottom, 12)
             }
-            if editor.isEditing && editor.isAddingWidget {
+            if editor.isEditing && editor.isAddingWidget && !editor.isShowingOptions {
                 PopoverWidgetPicker(ids: $widgetIDs, isPresented: Binding(
                     get: { editor.isAddingWidget }, set: { editor.isAddingWidget = $0 }
                 ))
                 .padding(.horizontal, 16).padding(.bottom, 12)
             }
-            if editor.isEditing && widgetIDs.isEmpty {
+            if editor.isEditing && widgetIDs.isEmpty && !editor.isShowingOptions {
                 Text(AidenteL10n.t("从“添加”中选择小组件，拖动可调整顺序。", "Choose widgets from Add, then drag to reorder them."))
                     .font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.bottom, 12)
             }
-            if !PopoverLayout.visibleWidgets(widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive).isEmpty {
+            if editor.isShowingOptions {
+                ScrollView { panelOptions.padding(.horizontal, 16).padding(.bottom, 12) }
+            } else if !PopoverLayout.visibleWidgets(widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive).isEmpty {
                 ScrollView {
                     VStack(spacing: 12) {
                         ForEach(PopoverLayout.visibleWidgets(widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive)) { widget in
                             VStack(alignment: .leading, spacing: 8) {
                                 if editor.isEditing && widgetIDs.contains(widget.id) {
                                     HStack {
-                                        Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
                                         Text(widget.title).font(.caption)
                                         Spacer()
                                         Button { move(widget, -1) } label: { Image(systemName: "chevron.up") }.disabled(widgetIDs.first == widget.id)
@@ -173,37 +177,22 @@ struct DashboardPopoverView: View {
                     .onLongPressGesture(minimumDuration: 0.5) { editor.isEditing = true }
                 Spacer(minLength: 4)
                 Button {
+                    editor.isShowingOptions = false
                     editor.isEditing.toggle()
                 } label: {
                     Label(AidenteL10n.t(editor.isEditing ? "完成" : "自定义", editor.isEditing ? "Done" : "Customize"),
                           systemImage: editor.isEditing ? "checkmark" : "slider.horizontal.3")
                 }.accessibilityLabel(AidenteL10n.t("自定义弹出窗口", "Customize Popover"))
-                Menu {
-                    Section(AidenteL10n.t("小组件", "Widgets")) {
-                        ForEach(PopoverWidget.allCases) { widget in
-                            Toggle(widget.title, isOn: Binding(get: { widgetIDs.contains(widget.id) }, set: { selected in
-                                if selected { if !widgetIDs.contains(widget.id) { widgetIDs.append(widget.id) } }
-                                else { widgetIDs.removeAll { $0 == widget.id } }
-                            }))
-                        }
-                    }
-                    Divider()
-                    Picker(AidenteL10n.t("界面外观", "Appearance"), selection: $appearance) {
-                        ForEach(InterfaceAppearance.allCases) { Text($0.title).tag($0) }
-                    }
-                    Button(AidenteL10n.t("弹出窗口设置…", "Popover Settings…")) { onOpenSettings(.dashboard) }
-                    Button(AidenteL10n.t("菜单栏样式…", "Menu Bar Appearance…")) { onOpenSettings(.menuBar) }
-                    Button(AidenteL10n.t("充电器指示灯…", "Charger LED…")) { onOpenSettings(.otherAppearance) }
-                    Divider()
-                    Button(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
-                        .keyboardShortcut("q", modifiers: .command)
-                } label: { Image(systemName: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).fixedSize()
-                .accessibilityLabel(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"))
+                Button { editor.isShowingOptions.toggle() } label: {
+                    Image(systemName: editor.isShowingOptions ? "xmark.circle" : "ellipsis.circle")
+                        .frame(minWidth: 24, minHeight: 24).contentShape(Rectangle())
+                }.accessibilityLabel(AidenteL10n.t(
+                    editor.isShowingOptions ? "收起选项" : "小组件与外观选项",
+                    editor.isShowingOptions ? "Close Options" : "Widgets and Appearance"))
             }.buttonStyle(.borderless).font(.system(size: 11))
                 .padding(.horizontal, 16).frame(height: 41)
         }
-        .frame(width: 402, height: PopoverLayout.height(widgets: widgetIDs, editing: editor.isEditing, adding: editor.isAddingWidget, calibrating: viewModel.calibrationActive))
+        .frame(width: 402, height: PopoverLayout.height(widgets: widgetIDs, editing: editor.isEditing, adding: editor.isAddingWidget, options: editor.isShowingOptions, calibrating: viewModel.calibrationActive))
         .background(AidenteMaterialLayer())
         .tint(.accentColor)
         .disabled(CompleteUninstaller.shared.isRunning)
@@ -223,6 +212,7 @@ struct DashboardPopoverView: View {
             editor.updateSize?()
         }
         .onChange(of: editor.isAddingWidget) { _, _ in editor.updateSize?() }
+        .onChange(of: editor.isShowingOptions) { _, _ in editor.updateSize?() }
         .onChange(of: compactEnergyWidget) { _, _ in editor.updateSize?() }
         .onChange(of: EnergyModeService.shared.isNonAutomaticActive) { _, _ in editor.updateSize?() }
         .onChange(of: viewModel.calibrationActive) { _, _ in editor.updateSize?() }
@@ -232,6 +222,28 @@ struct DashboardPopoverView: View {
             Divider()
             Button(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
         }
+    }
+    private var panelOptions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance")).font(.headline)
+            Toggle(AidenteL10n.t("在 Dock 中显示", "Show in Dock"), isOn: $showDockIcon).toggleStyle(.switch)
+            Picker(AidenteL10n.t("界面外观", "Appearance"), selection: $appearance) {
+                ForEach(InterfaceAppearance.allCases) { Text($0.title).tag($0) }
+            }.pickerStyle(.segmented)
+            Button(AidenteL10n.t("弹出窗口设置…", "Popover Settings…")) { onOpenSettings(.dashboard) }
+            Button(AidenteL10n.t("菜单栏样式…", "Menu Bar Appearance…")) { onOpenSettings(.menuBar) }
+            Button(AidenteL10n.t("充电器指示灯…", "Charger LED…")) { onOpenSettings(.otherAppearance) }
+            Divider()
+            ForEach(PopoverWidget.allCases) { widget in
+                Toggle(widget.title, isOn: Binding(get: { widgetIDs.contains(widget.id) }, set: { selected in
+                    if selected { if !widgetIDs.contains(widget.id) { widgetIDs.append(widget.id) } }
+                    else { widgetIDs.removeAll { $0 == widget.id } }
+                })).toggleStyle(.checkbox)
+            }
+            Divider()
+            Button(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
+                .keyboardShortcut("q", modifiers: .command)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private func commitTypedLimit() {
         enteringLimit = false
@@ -294,6 +306,7 @@ struct EnergyAppsWidget: View {
     @State private var hoveredApp: String?
     @State private var hoveringList = false
     @State private var interactionID = UUID()
+    @State private var showingScope = false
     @Default(.showAllRunningApps) private var showAll
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -301,12 +314,19 @@ struct EnergyAppsWidget: View {
                 Text(showAll ? AidenteL10n.t("运行中的 App", "Running Apps") : AidenteL10n.t("高能耗 App", "Significant Energy")).font(.caption.weight(.semibold))
                 Text("\(viewModel.topEnergyApps.count)").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                Menu {
-                    Button(AidenteL10n.t("所有运行中的 App", "All Running Apps")) { showAll = true }
-                    Button(AidenteL10n.t("仅高能耗 App", "Significant Energy Only")) { showAll = false }
-                } label: { Image(systemName: "line.3.horizontal.decrease") }.menuStyle(.borderlessButton).fixedSize()
+                Button { showingScope.toggle() } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .frame(width: 30, height: 24).contentShape(Rectangle())
+                        .foregroundStyle(showingScope ? Color.accentColor : Color.primary)
+                }.buttonStyle(.plain)
                     .accessibilityLabel(AidenteL10n.t("App 列表显示范围", "App List Scope"))
                     .help(AidenteL10n.t("按名称固定排序，不按功率换位；鼠标停留时固定名单，离开后更新。所有运行中的 App 包括空闲应用，后台进程可在能源使用设置中选择。", "Names stay in alphabetical order. Hover holds the list while readings update. All Running Apps includes idle apps; background processes are optional in Energy Use settings."))
+            }
+            if showingScope {
+                Picker(AidenteL10n.t("App 列表显示范围", "App List Scope"), selection: $showAll) {
+                    Text(AidenteL10n.t("所有运行中的 App", "All Running Apps")).tag(true)
+                    Text(AidenteL10n.t("仅高能耗 App", "Significant Energy Only")).tag(false)
+                }.pickerStyle(.segmented).labelsHidden()
             }
             Text(AidenteL10n.t("App 功率为进程能耗估算，不等于电脑总功率，也不作为整机分流。", "App watts are process estimates, not total Mac power or a hardware power breakdown."))
                 .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

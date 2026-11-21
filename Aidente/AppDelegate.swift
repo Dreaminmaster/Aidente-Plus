@@ -370,6 +370,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        guard statusBarManager != nil, Defaults[.showDockIcon] else { return nil }
+        let menu = NSMenu()
+        let hide = NSMenuItem(title: AidenteL10n.t("隐藏 Dock 图标", "Hide Dock Icon"),
+                              action: #selector(hideDockIconFromDock), keyEquivalent: "")
+        hide.target = self
+        menu.addItem(hide)
+        return menu
+    }
+
+    @objc private func hideDockIconFromDock() {
+        // Apply after AppKit finishes tracking the Dock menu.
+        DispatchQueue.main.async { Defaults[.showDockIcon] = false }
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
