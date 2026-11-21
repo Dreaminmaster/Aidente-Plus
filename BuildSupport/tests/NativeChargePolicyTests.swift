@@ -138,6 +138,20 @@ final class Registers: NativeChargeRegisters {
         _ = slow.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.5, now: start)
         check(!slow.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.2, now: start.addingTimeInterval(280)), "Meaningful raw progress renews the stall timer")
         check(!slow.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 94, raw: 94.1, now: start.addingTimeInterval(305)), "An observed target after slow progress is still completion")
+        var varyingFull = DischargeSafetyPolicy()
+        check(!varyingFull.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 4288.0 / 4495 * 100, now: start, capacity: (4288, 4495)),
+            "Use the actual starting capacities for the discharge budget")
+        varyingFull = try JSONDecoder().decode(DischargeSafetyPolicy.self, from: JSONEncoder().encode(varyingFull))
+        check(varyingFull.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 4241.0 / 4464 * 100, now: start.addingTimeInterval(290), capacity: (4241, 4464)),
+            "A falling full-capacity estimate must not conceal exhaustion of the mAh budget")
+        check(varyingFull.stopReason == .capacityBudget, "A stale display is not target completion")
+        var missingDisplay = DischargeSafetyPolicy()
+        check(missingDisplay.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: -1, raw: 96, now: start, capacity: (4320, 4500)),
+            "Missing macOS percentage stops a discharge even when raw capacity is available")
+        check(missingDisplay.stopReason == .invalidReading, "An unreadable display is logged as invalid telemetry")
         print("PASS: \(count) native policy, sleep, discharge intent, delayed readback and rollback checks (no hardware writes)")
     }
 }

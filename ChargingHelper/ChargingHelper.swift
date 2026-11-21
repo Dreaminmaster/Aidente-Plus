@@ -249,25 +249,45 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
             guard policy.managed else {
                 try restoreNativeLimit(); nativePolicy.reset(); clearDischargeSafety(); return
             }
-            let percentage = try SMCBattery.macOSPercentage()
+            let displayReading = Result { try SMCBattery.macOSPercentage() }
             let beforeSafety = dischargeSafety
             let rawCapacity = policy.adapter ? nil : (try? SMCBattery.rawCapacity())
             let raw = rawCapacity.map { min(100, max(0, $0.current / $0.full * 100)) } ?? .nan
             let safetyStop = dischargeSafety.mustStop(managed: policy.managed,
                 dischargeRequested: !policy.adapter, target: policy.chargeCeiling,
-                displayed: percentage, raw: raw, now: Date())
+                displayed: (try? displayReading.get()) ?? -1, raw: raw, now: Date(), capacity: rawCapacity)
             if dischargeSafety != beforeSafety {
                 controlDefaults.set(try JSONEncoder().encode(dischargeSafety), forKey: dischargeSafetyKey)
                 guard controlDefaults.synchronize() else { throw CocoaError(.fileWriteUnknown) }
             }
             if safetyStop {
+                let display = (try? displayReading.get()).map(String.init) ?? "unavailable"
                 let current = (try? SMCBattery.getCurrent()).map { String($0) } ?? "unavailable"
                 let rawCurrent = rawCapacity.map { String($0.current) } ?? "unavailable"
                 let rawFull = rawCapacity.map { String($0.full) } ?? "unavailable"
                 let cause = (dischargeSafety.stopReason ?? .previousStop).rawValue
-                logger.error("DISCHARGE_SAFETY_EVIDENCE target=\(policy.chargeCeiling, privacy: .public) display=\(percentage, privacy: .public) rawCurrentMAh=\(rawCurrent, privacy: .public) rawFullMAh=\(rawFull, privacy: .public) currentA=\(current, privacy: .public) cause=\(cause, privacy: .public)")
+                logger.error("DISCHARGE_SAFETY_EVIDENCE target=\(policy.chargeCeiling, privacy: .public) display=\(display, privacy: .public) rawCurrentMAh=\(rawCurrent, privacy: .public) rawFullMAh=\(rawFull, privacy: .public) currentA=\(current, privacy: .public) cause=\(cause, privacy: .public)")
                 self.policy = nil
                 nativePolicy.reset()
+                // Restoring the system's old limit can immediately re-request
+                // draining if that limit is below the current battery level.
+                // Keep the blocked intent and stop at the live level instead.
+                if let percentage = try? displayReading.get(),
+                   dischargeSafety.stopReason == .capacityBudget || dischargeSafety.stopReason == .stalled {
+                    let held: Bool
+                    do {
+                        try controller.set(percentage)
+                        held = true
+                    } catch {
+                        held = false
+                        logger.error("DISCHARGE_HOLD_FAILED \(error.localizedDescription, privacy: .public)")
+                    }
+                    if held {
+                        logger.notice("DISCHARGE_SAFETY_HOLD_REGISTERED display=\(percentage) target=\(policy.chargeCeiling)")
+                        throw NSError(domain: "AidenteControl", code: 6, userInfo: [NSLocalizedDescriptionKey:
+                            "DISCHARGE_SAFETY_STOP [\(cause)] HOLD_REGISTERED: 已停止主动放电并登记当前电量保持。"])
+                    }
+                }
                 do { try restoreNativeLimit() }
                 catch {
                     // Keep the recovery snapshot. If restoring its precise value
@@ -277,10 +297,11 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                     throw NSError(domain: "AidenteControl", code: 6, userInfo: [NSLocalizedDescriptionKey:
                         "DISCHARGE_SAFETY_STOP [\(cause)]: 电量读数异常，已停止主动策略；原设置恢复未确认，请修复控制服务。"])
                 }
-                logger.error("DISCHARGE_SAFETY_STOP display=\(percentage) target=\(policy.chargeCeiling)")
+                logger.error("DISCHARGE_SAFETY_STOP display=\(display, privacy: .public) target=\(policy.chargeCeiling)")
                 throw NSError(domain: "AidenteControl", code: 6, userInfo: [NSLocalizedDescriptionKey:
                     "DISCHARGE_SAFETY_STOP [\(cause)]: 放电长期没有足够进展、已达安全容量预算，或读数不可用。已停止放电并恢复接管前设置。"])
             }
+            let percentage = try displayReading.get()
             let externalConnected = try SMCBattery.externalPowerConnected()
             guard let limit = nativePolicy.target(policy: policy, percentage: percentage,
                                                    externalConnected: externalConnected) else { return }

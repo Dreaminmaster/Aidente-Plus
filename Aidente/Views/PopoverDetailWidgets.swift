@@ -119,6 +119,10 @@ struct PopoverStatusExplanation: View {
             return viewModel.operationStatusText
         }
         if viewModel.isCharging {
+            if viewModel.displayPercentage >= limit {
+                return AidenteL10n.t("电量已达到或超过设定上限 \(limit)%，但仍测到电池正在充电。状态以实际电流为准。",
+                    "The battery has reached or exceeded the \(limit)% limit and is still drawing charge. The status reflects the measured current.")
+            }
             return AidenteL10n.t("电源正在为电脑供电并给电池充电，达到\(limit)%后将请求保持。", "The adapter powers your Mac and charges the battery. A hold is requested at \(limit)%.")
         }
         if viewModel.displayPercentage > limit && !automaticDischarge {

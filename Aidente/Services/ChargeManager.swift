@@ -388,8 +388,7 @@ class ChargeManager {
         }
 
         if lastManageChargingEnabled != true {
-            safetyStopReason = ""
-            Defaults[.lastDischargeSafetyStopReason] = ""
+            clearDischargeNotice()
             lastManageChargingEnabled = true
             clearCachedState()
             stateWasCleared = true
@@ -661,6 +660,12 @@ class ChargeManager {
         limitPolicy = ChargeLimitPolicy()
     }
 
+    private func clearDischargeNotice() {
+        safetyStopReason = ""
+        Defaults[.lastDischargeSafetyStopReason] = ""
+        dischargeProtectionReason = nil
+    }
+
     private func resetToDefaults() {
         limitPolicy = ChargeLimitPolicy()
         lastManageChargingEnabled = false
@@ -743,9 +748,16 @@ class ChargeManager {
                         case .previousStop, nil:
                             explanation = AidenteL10n.t("放电已触发安全保护。", "The discharge activated the safety protection.")
                         }
-                        let recovery = detail.contains("恢复未确认")
-                            ? AidenteL10n.t("原设置尚未确认恢复，请修复控制服务。", "Restoring the prior settings is unconfirmed. Repair the control service.")
-                            : AidenteL10n.t("已停止放电并恢复接管前设置。若要继续限充，请重新启用充电管理。", "Discharge stopped and prior settings were restored. Enable charge management again to resume limiting.")
+                        let holdRegistered = detail.contains("HOLD_REGISTERED:")
+                        let recovery: String
+                        if holdRegistered {
+                            recovery = AidenteL10n.t("已登记当前电量的保持点，充电管理继续启用。实际电流请看上方状态。",
+                                "A hold was registered at the current level. Charge management remains on. See the measured current above.")
+                        } else if detail.contains("恢复未确认") {
+                            recovery = AidenteL10n.t("原设置尚未确认恢复，请修复控制服务。", "Restoring the prior settings is unconfirmed. Repair the control service.")
+                        } else {
+                            recovery = AidenteL10n.t("已停止放电并恢复接管前设置。若要继续限充，请重新启用充电管理。", "Discharge stopped and prior settings were restored. Enable charge management again to resume limiting.")
+                        }
                         safetyStopReason = explanation + " " + recovery
                         let level = batteryService.metrics.batteryPercentage
                         safetyStopReason = AidenteL10n.t("放电未完成（目标\(request.chargeCeiling)%，当前系统读数\(level)%）。", "Discharge not completed (target \(request.chargeCeiling)%, current system reading \(level)%). ") + safetyStopReason
@@ -762,9 +774,14 @@ class ChargeManager {
                         Defaults[.automaticDischarge] = false
                         setCalibrationStage(.idle)
                         Defaults[.systemCalibrationRecovery] = false
-                        Defaults[.manageCharging] = false
                         verificationTask?.cancel()
                         updateSleepAssertion(shouldPreventSleep: false)
+                        if holdRegistered {
+                            evaluate(controlState: batteryService.controlState)
+                            if pendingPowerRequest != request { continue }
+                            break
+                        }
+                        Defaults[.manageCharging] = false
                     }
                     chargingControlError = AidenteL10n.t(
                         "充电控制未生效：\(error.localizedDescription)",
@@ -997,6 +1014,7 @@ class ChargeManager {
 
     func resumeNormalManagement() {
         guard !SystemCalibrationService.shared.isActive else { return }
+        if Defaults[.manageCharging], !safetyStopReason.isEmpty { clearDischargeNotice() }
         setTopUpActive(false)
         forceDischargeActive = false
         cancelCalibration(reevaluate: false)
@@ -1007,6 +1025,7 @@ class ChargeManager {
 
     func startDischarge(to target: Int) {
         guard !SystemCalibrationService.shared.isActive else { return }
+        if Defaults[.manageCharging], !safetyStopReason.isEmpty { clearDischargeNotice() }
         let target = min(100, max(20, target))
         Defaults[.chargeLimit] = target
         if target >= batteryService.metrics.batteryPercentage { resumeNormalManagement(); return }

@@ -15,6 +15,8 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         // Optional for recovery snapshots produced by older versions.
         var progressRaw: Double?
         var progressAt: Date?
+        var startingCurrentMAh: Double?
+        var startingFullMAh: Double?
     }
     private var session: Session?
     private var blockedTarget: Int?
@@ -24,7 +26,8 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
     public mutating func reset() { session = nil; blockedTarget = nil; stopReason = nil }
     /// True means stop and restore the captured system policy, never "complete".
     public mutating func mustStop(managed: Bool, dischargeRequested: Bool, target: Int,
-                                  displayed: Int, raw: Double, now: Date) -> Bool {
+                                  displayed: Int, raw: Double, now: Date,
+                                  capacity: (current: Double, full: Double)? = nil) -> Bool {
         guard managed && dischargeRequested else { reset(); return false }
         if blockedTarget == target {
             if stopReason == nil { stopReason = .previousStop }
@@ -39,7 +42,8 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         guard displayed > target else { reset(); return false }
         if session?.target != target {
             session = Session(target: target, startingDisplay: displayed, startingRaw: raw,
-                lastDisplay: displayed, lastDisplayChange: now, progressRaw: raw, progressAt: now)
+                lastDisplay: displayed, lastDisplayChange: now, progressRaw: raw, progressAt: now,
+                startingCurrentMAh: capacity?.current, startingFullMAh: capacity?.full)
         }
         guard var active = session else { return false }
         let displayProgress = displayed < active.lastDisplay
@@ -54,7 +58,14 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         }
         session = active
         let requestedDrop = Double(max(1, active.startingDisplay - target))
-        let consumed = active.startingRaw - raw
+        // A falling full-capacity estimate can conceal a drop in actual mAh.
+        // Keep the original ratio guard and also measure against the first full
+        // estimate, so either independent measure can exhaust the budget.
+        var consumed = active.startingRaw - raw
+        if let capacity, let startingCurrent = active.startingCurrentMAh,
+           let startingFull = active.startingFullMAh, startingFull > 0 {
+            consumed = max(consumed, (startingCurrent - capacity.current) / startingFull * 100)
+        }
         let exhaustedBudget = now.timeIntervalSince(active.lastDisplayChange) >= 120 && consumed >= requestedDrop
         let noProgress = now.timeIntervalSince(active.progressAt ?? now) >= 300
         if exhaustedBudget || noProgress {
