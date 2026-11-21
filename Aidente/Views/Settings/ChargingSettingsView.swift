@@ -154,6 +154,9 @@ struct ChargingSettingsView: View {
                             .disabled(helperManager.isBusy || AidenteRuntime.isUIPreview || helperManager.isRunningFromDiskImage)
                     }
                     if let error = chargeManager.controlError { Text(error).font(.caption).foregroundStyle(.red) }
+                    if let notice = chargeManager.dischargeProtectionNotice {
+                        Label(notice, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
         }

@@ -158,7 +158,6 @@ class ChargeManager {
         let request = pendingPowerRequest
         let cause: String
         if let reason { cause = reason }
-        else if !safetyStopReason.isEmpty { cause = "dischargeSafetyStop" }
         else if serviceControlError != nil { cause = "controlServiceError" }
         else if chargingControlError != nil || adapterControlError != nil { cause = "controlRequestError" }
         else if operationStatus == .systemCalibration { cause = "systemCalibrationOverride" }
@@ -201,22 +200,16 @@ class ChargeManager {
     private var powerHoldVerified = false
     private var powerDischargeVerified = false
 
-    var controlError: String? {
-        if !safetyStopReason.isEmpty { return safetyStopReason }
-        guard let rawError =
-            serviceControlError ?? chargingControlError ?? adapterControlError ?? powerFlowError
-        else {
-            return nil
-        }
-        return AidenteL10n.controlError(rawError)
-    }
+    private var commandError: String? { serviceControlError ?? chargingControlError ?? adapterControlError }
+    var controlError: String? { (commandError ?? powerFlowError).map(AidenteL10n.controlError) }
+    var dischargeProtectionNotice: String? { safetyStopReason.isEmpty ? nil : safetyStopReason }
     var powerFlowPending: Bool {
         // An explicit OS override suspends our physical hold/resume check;
         // it does not mean the helper or saved policy has disappeared.
         if operationStatus == .systemCalibration { return false }
         guard let request = pendingPowerRequest, request.managed,
               batteryService.adapterMetrics.adapterConnected else { return false }
-        let fresh = batteryService.lastPowerSampleDate.map { Date().timeIntervalSince($0) < 15 } ?? false
+        let fresh = batteryService.lastPowerSampleDate.map { (-1..<15).contains(Date().timeIntervalSince($0)) } ?? false
         if !request.adapter {
             return appliedPowerRequest != request || !powerDischargeVerified || !fresh
                 || batteryService.metrics.isCharging || batteryService.metrics.batteryPower >= -1
@@ -224,7 +217,7 @@ class ChargeManager {
         if request.charging {
             return batteryService.metrics.batteryPercentage < request.chargeCeiling
                 && (!fresh || appliedPowerRequest != request || !batteryService.metrics.batteryPower.isFinite
-                    || !batteryService.metrics.isCharging && batteryService.metrics.batteryPower <= 1)
+                    || batteryService.metrics.batteryPower <= 1)
         }
         return !request.charging && (!powerHoldVerified || !fresh || appliedPowerRequest != request
             || batteryService.metrics.isCharging || !batteryService.metrics.batteryPower.isFinite
@@ -232,7 +225,6 @@ class ChargeManager {
     }
     var chargeResumeRequested: Bool { pendingPowerRequest?.charging == true }
     var operationStatusTitle: String {
-        if !safetyStopReason.isEmpty { return AidenteL10n.t("放电保护已触发", "Discharge protection triggered") }
         if controlError != nil { return AidenteL10n.t("充电控制未生效") }
         if case .discharging(let target) = operationStatus, powerFlowPending {
             return AidenteL10n.t("放电至 \(target)% · 等待实际功率确认", "Discharge to \(target)% · Verifying power flow")
@@ -766,7 +758,7 @@ class ChargeManager {
                             safetyStopReason += AidenteL10n.t(" 最近读取的硬件容量换算为\(hardware)%；它与系统百分比使用不同刻度，不能视为已达目标或继续无限放电。", " Latest hardware-capacity ratio: \(hardware)%. It uses a different scale from the system percentage; this is not target completion and discharge cannot continue without a safe bound.")
                         }
                         logger.error("DISCHARGE_STOP_OBSERVED target=\(request.chargeCeiling, privacy: .public) display=\(level, privacy: .public) hardware=\(self.batteryService.metrics.hardwareBatteryPercentage, privacy: .public) batteryW=\(self.batteryService.metrics.batteryPower, privacy: .public)")
-                        recordControlTransition()
+                        recordControlTransition(reason: "dischargeSafetyStop")
                         Defaults[.lastDischargeSafetyStopReason] = safetyStopReason
                         forceDischargeActive = false
                         manualPauseActive = false
@@ -829,7 +821,7 @@ class ChargeManager {
                     continue
                 }
                 guard let sampleDate = batteryService.lastPowerSampleDate,
-                      sampleDate != lastSample, Date().timeIntervalSince(sampleDate) < 15 else {
+                      sampleDate != lastSample, (-1..<15).contains(Date().timeIntervalSince(sampleDate)) else {
                     verification = ChargeHoldVerification()
                     resumeVerification = ChargeResumeVerification()
                     powerHoldVerified = false
@@ -876,6 +868,9 @@ class ChargeManager {
                     }
                     continue
                 }
+                // PowerUI can accept a hold while the battery is still settling.
+                // Keep reporting measured power during that transition.
+                let settlingNativeHold = usesNativeChargeLimit && Date().timeIntervalSince(started) < 180
                 switch verification.sample(batteryPower: batteryService.metrics.batteryPower, isCharging: batteryService.metrics.isCharging) {
                 case .pending: if !preserveVerifiedHold || !batteryService.metrics.batteryPower.isFinite { powerHoldVerified = false }
                 case .held:
@@ -884,13 +879,13 @@ class ChargeManager {
                     sendChargingStateNotification(charging: false, reason: nil)
                 case .charging:
                     powerHoldVerified = false
-                    powerFlowError = AidenteL10n.t(
+                    powerFlowError = settlingNativeHold ? nil : AidenteL10n.t(
                         "已请求暂停，但电池仍持续充电；尚未实现限充保持。",
                         "Charging hold requested, but the battery is still charging."
                     )
                 case .discharging:
                     powerHoldVerified = false
-                    powerFlowError = AidenteL10n.t(
+                    powerFlowError = settlingNativeHold ? nil : AidenteL10n.t(
                         "已请求暂停且适配器已连接，但电池仍持续放电。可能受固件或适配器供电能力限制，尚未实现适配器供电保持。",
                         "Hold requested with AC connected, but the battery is still discharging. Firmware or adapter capacity may prevent an AC-powered hold."
                     )
@@ -1141,9 +1136,10 @@ class ChargeManager {
 
     // Wait for command acceptance; physical charge-hold verification continues
     // independently using fresh power samples and is never implied here.
-    func waitForControlRequest() async throws {
+    func waitForControlRequest(requiresDischarge: Bool = false) async throws {
         while let task = powerTask { await task.value }
-        if let error = controlError { throw XPCError.commandFailed(error) }
+        if let error = commandError { throw XPCError.commandFailed(AidenteL10n.controlError(error)) }
+        if requiresDischarge, let notice = dischargeProtectionNotice { throw XPCError.commandFailed(notice) }
     }
 
     func prepareForCompleteUninstall() async {

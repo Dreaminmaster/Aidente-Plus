@@ -158,6 +158,15 @@ final class SimulatedBattery: BatteryPowerControlling {
         check(ChargeTrackMotion.observed(isCharging: false, batteryPower: 0, fresh: true) == .stopped, "A hold does not animate")
         check(ChargeTrackMotion.observed(isCharging: false, batteryPower: -10, fresh: false) == .stopped, "Stale discharge samples do not animate")
         check(ChargeTrackMotion.observed(isCharging: false, batteryPower: .nan, fresh: true) == .stopped, "Invalid samples do not animate")
+        check(ChargeTrackMotion.observed(isCharging: true, batteryPower: 0, fresh: true) == .stopped, "A transitional charging flag cannot animate a zero-watt sample")
+        check(ChargeTrackMotion.observed(isCharging: true, batteryPower: -4, fresh: true) == .stopped, "Contradictory discharge and charging data remain unconfirmed")
+        check(ObservedBatteryFlow.resolve(reportsCharging: false, watts: 4, fresh: true) == .charging, "Fresh positive power is charging even before the operating-system flag changes")
+        check(ObservedBatteryFlow.resolve(reportsCharging: true, watts: 0, fresh: true) == .unconfirmed, "Flag-only charging without measurable power remains unconfirmed")
+        var flagOnlyResume = ChargeResumeVerification()
+        for _ in 0..<3 {
+            check(flagOnlyResume.sample(percentage: 90, target: 95, batteryPower: 0, isCharging: true) == .pending,
+                  "A hardware charging flag with zero watts cannot confirm resumed charging")
+        }
         var progress = DischargeProgress()
         let now = Date()
         progress.update(requested: true, target: 90, capacity: 4200, batteryPower: -10, date: now, now: now)

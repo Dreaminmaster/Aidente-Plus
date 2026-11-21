@@ -29,8 +29,21 @@ public struct DischargeProgress: Equatable {
 public enum ChargeTrackMotion: Equatable {
     case stopped, charging, discharging
     public static func observed(isCharging: Bool, batteryPower: Double, fresh: Bool) -> Self {
-        guard fresh, batteryPower.isFinite else { return .stopped }
-        if isCharging { return .charging }
-        return batteryPower < -1 ? .discharging : .stopped
+        switch ObservedBatteryFlow.resolve(reportsCharging: isCharging, watts: batteryPower, fresh: fresh) {
+        case .charging: return .charging
+        case .discharging: return .discharging
+        case .held, .unconfirmed: return .stopped
+        }
+    }
+}
+
+public enum ObservedBatteryFlow: Equatable {
+    case unconfirmed, held, charging, discharging
+
+    public static func resolve(reportsCharging: Bool, watts: Double, fresh: Bool) -> Self {
+        guard fresh, watts.isFinite else { return .unconfirmed }
+        if watts > 1 { return .charging }
+        if watts < -1, !reportsCharging { return .discharging }
+        return reportsCharging ? .unconfirmed : .held
     }
 }

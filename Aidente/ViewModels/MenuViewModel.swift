@@ -78,16 +78,19 @@ class MenuViewModel {
         guard let lastPowerSampleDate else { return false }
         return (-1..<15).contains(Date().timeIntervalSince(lastPowerSampleDate))
     }
+    var observedFlow: ObservedBatteryFlow {
+        .resolve(reportsCharging: isCharging, watts: batteryPower, fresh: hasFreshPowerSample)
+    }
     var observedChargingState: String {
-        guard hasFreshPowerSample, batteryCurrent.isFinite else {
-            return AidenteL10n.t("状态待确认", "Awaiting verification")
+        switch observedFlow {
+        case .unconfirmed: return AidenteL10n.t("状态待确认", "Awaiting verification")
+        case .charging: return AidenteL10n.t("正在充电", "Charging")
+        case .discharging: return AidenteL10n.t("电池正在供电", "Battery supplying power")
+        case .held:
+            return adapterConnected
+                ? AidenteL10n.t("已暂停充电", "Charging paused")
+                : AidenteL10n.t("使用电池", "On battery")
         }
-        if batteryCurrent > 0.1 { return AidenteL10n.t("正在充电", "Charging") }
-        if batteryCurrent < -0.1 { return AidenteL10n.t("电池正在供电", "Battery supplying power") }
-        if isCharging { return AidenteL10n.t("状态待确认", "Awaiting verification") }
-        return adapterConnected
-            ? AidenteL10n.t("已暂停充电", "Charging paused")
-            : AidenteL10n.t("使用电池", "On battery")
     }
     var trackMotion: ChargeTrackMotion {
         ChargeTrackMotion.observed(isCharging: isCharging, batteryPower: batteryPower,
@@ -108,11 +111,14 @@ class MenuViewModel {
         return false
     }
     var observedStatusSymbols: [String] {
-        if hasControlError { return ["exclamationmark.triangle"] }
-        if !adapterConnected { return ["battery.50percent"] }
-        if isCharging { return ["powerplug.fill", "bolt.fill"] }
-        if batteryPower < -1 { return ["powerplug.fill", "battery.50percent"] }
-        return ["powerplug.fill", "pause.fill"]
+        var symbols = adapterConnected ? ["powerplug.fill"] : []
+        switch observedFlow {
+        case .unconfirmed: symbols.append("questionmark.circle")
+        case .charging: symbols.append("bolt.fill")
+        case .discharging: symbols.append("battery.50percent")
+        case .held: symbols.append(adapterConnected ? "pause.fill" : "battery.50percent")
+        }
+        return symbols
     }
     var manualPauseActive: Bool { chargeManager.manualPauseActive }
     var calibrationActive: Bool { chargeManager.calibrationStage != .idle }
@@ -120,7 +126,7 @@ class MenuViewModel {
     var powerFlowPending: Bool { chargeManager.powerFlowPending }
     var chargeResumeRequested: Bool { chargeManager.chargeResumeRequested }
     var controlErrorText: String? { chargeManager.controlError }
-    var hasControlError: Bool { chargeManager.controlError != nil }
+    var dischargeProtectionNotice: String? { chargeManager.dischargeProtectionNotice }
     var manageChargingEnabled: Bool { Defaults[.manageCharging] }
     var heatProtectionActive: Bool { chargeManager.operationStatus == .heatProtection }
     var sailingActive: Bool { chargeManager.operationStatus == .sailing }

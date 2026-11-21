@@ -112,18 +112,24 @@ struct PopoverStatusExplanation: View {
                 return AidenteL10n.t("已请求充至\(limit)%，但尚未确认电池实际充电。请检查 macOS 电池设置中是否另有上限或暂停状态。",
                     "Charging to \(limit)% was requested, but battery charging is not confirmed. Check for another charge limit or hold in macOS Battery settings.")
             }
-            if viewModel.isCharging {
+            if viewModel.observedFlow == .charging {
                 return AidenteL10n.t("已请求暂停，但电池目前仍在充电；目标为\(limit)%，等待系统执行并确认保持。",
                     "Hold requested, but the battery is still charging. Target \(limit)%; waiting for macOS to apply and confirm the hold.")
             }
             return viewModel.operationStatusText
         }
-        if viewModel.isCharging {
+        if viewModel.observedFlow == .charging {
             if viewModel.displayPercentage >= limit {
                 return AidenteL10n.t("电量已达到或超过设定上限 \(limit)%，但仍测到电池正在充电。状态以实际电流为准。",
                     "The battery has reached or exceeded the \(limit)% limit and is still drawing charge. The status reflects the measured current.")
             }
             return AidenteL10n.t("电源正在为电脑供电并给电池充电，达到\(limit)%后将请求保持。", "The adapter powers your Mac and charges the battery. A hold is requested at \(limit)%.")
+        }
+        if viewModel.observedFlow == .unconfirmed {
+            return AidenteL10n.t("正在等待新近的电池功率读数。", "Waiting for a fresh battery power reading.")
+        }
+        if viewModel.observedFlow == .discharging {
+            return AidenteL10n.t("适配器已连接，电池当前也在供电。", "The adapter is connected, and the battery is supplying power.")
         }
         if viewModel.displayPercentage > limit && !automaticDischarge {
             return AidenteL10n.t("当前\(viewModel.displayPercentage)%高于上限\(limit)%，充电已暂停。电脑使用适配器供电；若需主动降到\(limit)%，请点击“放电”或开启自动放电。",
@@ -140,7 +146,7 @@ struct PopoverStatusExplanation: View {
                     ForEach(Array(viewModel.observedStatusSymbols.enumerated()), id: \.offset) { _, symbol in
                         Image(systemName: symbol)
                     }
-                }.accessibilityLabel(viewModel.operationStatusText)
+                }.accessibilityLabel(viewModel.observedChargingState)
             }
             Text(AidenteL10n.t("设定上限 \(limit)% · 当前 \(viewModel.displayPercentage)% · \(viewModel.observedChargingState)",
                                 "Limit \(limit)% · Battery \(viewModel.displayPercentage)% · \(viewModel.observedChargingState)"))
@@ -169,6 +175,12 @@ struct PopoverStatusExplanation: View {
                 }
             }
             Text(explanation).font(.caption).fixedSize(horizontal: false, vertical: true)
+            if let notice = viewModel.dischargeProtectionNotice {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let progress = viewModel.dischargeProgressText {
                 Text(progress).font(.caption2).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

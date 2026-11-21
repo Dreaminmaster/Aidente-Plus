@@ -11,6 +11,7 @@ public final class NativeChargeLimit {
     }
     private let object: AnyObject
     private let type: AnyClass
+    private static let frameworkLoaded = dlopen("/System/Library/PrivateFrameworks/PowerUI.framework/Versions/A/PowerUI", RTLD_NOW) != nil
     private typealias ErrorPointer = AutoreleasingUnsafeMutablePointer<NSError?>?
     private typealias Flag = @convention(c) (AnyObject, Selector) -> Bool
     private typealias ByteRead = @convention(c) (AnyObject, Selector, ErrorPointer) -> UInt8
@@ -20,7 +21,7 @@ public final class NativeChargeLimit {
     private typealias Disable = @convention(c) (AnyObject, Selector, ErrorPointer) -> Bool
 
     public init() throws {
-        guard dlopen("/System/Library/PrivateFrameworks/PowerUI.framework/Versions/A/PowerUI", RTLD_NOW) != nil,
+        guard Self.frameworkLoaded,
               let cls = NSClassFromString("PowerUISmartChargeClient") else { throw Self.failure("系统原生限充接口不可用") }
         // Check return/argument ABI before casting an IMP. Unknown future API
         // signatures fail closed instead of making an unsafe runtime call.

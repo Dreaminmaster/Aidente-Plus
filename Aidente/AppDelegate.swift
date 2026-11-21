@@ -252,7 +252,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let value, (20...100).contains(value) else { throw XPCError.commandFailed("Charge limit must be 20–100") }
                 Defaults[.chargeLimit] = value; self.chargeManager.resumeNormalManagement()
             case "pause":
-                Defaults[.chargeLimit] = max(20, self.batteryService.metrics.batteryPercentage)
                 self.chargeManager.pauseCharging()
             case "resume": self.chargeManager.resumeNormalManagement()
             case "top-up": self.chargeManager.startTopUp()
@@ -263,7 +262,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case "stop-calibration": self.chargeManager.cancelCalibration()
             default: throw XPCError.commandFailed("Unknown command")
             }
-            try await self.chargeManager.waitForControlRequest()
+            try await self.chargeManager.waitForControlRequest(requiresDischarge: command == "discharge")
         }, query: { [weak self] name in
             guard let self else { return "" }
             switch name {
