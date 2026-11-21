@@ -133,10 +133,12 @@ class ChargeManager {
         let systemReportsCharging: Bool
         let state: String
         let cause: String
+        let protectionReason: String?
     }
 
     @ObservationIgnored private var controlEvents: [ControlEvent] = []
     @ObservationIgnored private var lastEventKey: [String] = []
+    @ObservationIgnored private var dischargeProtectionReason: DischargeSafetyPolicy.StopReason?
 
     func exportControlEvents() throws -> String {
         let encoder = JSONEncoder()
@@ -176,7 +178,8 @@ class ChargeManager {
             batteryCurrentAmps: fresh && metrics.batteryCurrent.isFinite ? metrics.batteryCurrent : nil,
             batteryPowerWatts: fresh && metrics.batteryPower.isFinite ? metrics.batteryPower : nil,
             adapterConnected: connected, systemReportsCharging: metrics.isCharging,
-            state: operationStatusTitle, cause: cause))
+            state: operationStatusTitle, cause: cause,
+            protectionReason: cause == "dischargeSafetyStop" ? dischargeProtectionReason?.rawValue : nil))
         if controlEvents.count > 128 { controlEvents.removeFirst(controlEvents.count - 128) }
     }
 
@@ -724,9 +727,26 @@ class ChargeManager {
                     appliedPowerRequest = nil
                     guard pendingPowerRequest == request else { continue }
                     if error.localizedDescription.contains("DISCHARGE_SAFETY_STOP") {
-                        safetyStopReason = error.localizedDescription.contains("恢复未确认")
-                            ? "电量读数异常，已停止主动策略。原设置尚未确认恢复，请修复控制服务。"
-                            : "放电进展不足、已达安全容量预算，或读数不可用。已停止放电并恢复接管前设置。若要继续限充，请重新启用充电管理。"
+                        let detail = error.localizedDescription
+                        let reason = ["invalidReading", "capacityBudget", "stalled", "previousStop"]
+                            .first { detail.contains("DISCHARGE_SAFETY_STOP [\($0)]") }
+                            .flatMap(DischargeSafetyPolicy.StopReason.init(rawValue:))
+                        dischargeProtectionReason = reason
+                        let explanation: String
+                        switch reason {
+                        case .capacityBudget:
+                            explanation = AidenteL10n.t("原始容量已达到安全放电预算，系统电量尚未到点。", "Raw capacity reached the safety budget before the displayed charge reached the target.")
+                        case .stalled:
+                            explanation = AidenteL10n.t("连续五分钟未检测到足够的放电进展。", "There was no meaningful discharge progress for five minutes.")
+                        case .invalidReading:
+                            explanation = AidenteL10n.t("未取得可用于安全放电的电池读数。", "Battery readings needed for safe discharge were unavailable.")
+                        case .previousStop, nil:
+                            explanation = AidenteL10n.t("放电已触发安全保护。", "The discharge activated the safety protection.")
+                        }
+                        let recovery = detail.contains("恢复未确认")
+                            ? AidenteL10n.t("原设置尚未确认恢复，请修复控制服务。", "Restoring the prior settings is unconfirmed. Repair the control service.")
+                            : AidenteL10n.t("已停止放电并恢复接管前设置。若要继续限充，请重新启用充电管理。", "Discharge stopped and prior settings were restored. Enable charge management again to resume limiting.")
+                        safetyStopReason = explanation + " " + recovery
                         let level = batteryService.metrics.batteryPercentage
                         safetyStopReason = AidenteL10n.t("放电未完成（目标\(request.chargeCeiling)%，当前系统读数\(level)%）。", "Discharge not completed (target \(request.chargeCeiling)%, current system reading \(level)%). ") + safetyStopReason
                         if batteryService.metrics.hasHardwarePercentage {

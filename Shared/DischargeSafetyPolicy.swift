@@ -3,6 +3,9 @@ import Foundation
 /// A stale user-visible gauge must not turn a bounded discharge into an
 /// unbounded wait. Raw capacity is a safety budget, not a substitute UI percent.
 public struct DischargeSafetyPolicy: Codable, Equatable {
+    public enum StopReason: String, Codable {
+        case invalidReading, capacityBudget, stalled, previousStop
+    }
     private struct Session: Codable, Equatable {
         var target: Int
         var startingDisplay: Int
@@ -15,17 +18,22 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
     }
     private var session: Session?
     private var blockedTarget: Int?
+    public private(set) var stopReason: StopReason?
     public init() {}
     public var isBlocked: Bool { blockedTarget != nil }
-    public mutating func reset() { session = nil; blockedTarget = nil }
+    public mutating func reset() { session = nil; blockedTarget = nil; stopReason = nil }
     /// True means stop and restore the captured system policy, never "complete".
     public mutating func mustStop(managed: Bool, dischargeRequested: Bool, target: Int,
                                   displayed: Int, raw: Double, now: Date) -> Bool {
         guard managed && dischargeRequested else { reset(); return false }
-        if blockedTarget == target { return true }
+        if blockedTarget == target {
+            if stopReason == nil { stopReason = .previousStop }
+            return true
+        }
         if blockedTarget != nil { reset() }
         guard raw.isFinite, (1...100).contains(raw), (0...100).contains(displayed) else {
             blockedTarget = target
+            stopReason = .invalidReading
             return true
         }
         guard displayed > target else { reset(); return false }
@@ -51,6 +59,7 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         let noProgress = now.timeIntervalSince(active.progressAt ?? now) >= 300
         if exhaustedBudget || noProgress {
             blockedTarget = target
+            stopReason = exhaustedBudget ? .capacityBudget : .stalled
             return true
         }
         return false
