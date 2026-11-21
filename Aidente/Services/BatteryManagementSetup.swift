@@ -7,6 +7,7 @@ import SwiftUI
     static let shared=BatteryManagementSetup()
     private(set) var enabling=false
     var onEnabled:(()->Void)?
+    var onDisable: (() async throws -> Void)?
     private var welcome:NSWindow?
     var ready:Bool { Defaults[.manageCharging] && ChargingHelperManager.shared.isInstalled && ChargingHelperManager.shared.registrationError == nil }
 
@@ -16,21 +17,9 @@ import SwiftUI
         enabling=true;defer { enabling=false }
         let helper=ChargingHelperManager.shared
         helper.refreshStatus()
-        let needsRepair=helper.registrationError != nil
-        if !helper.isInstalled || needsRepair || AidenteRuntime.isUIPreview {
-            let alert=NSAlert()
-            alert.messageText=AidenteL10n.t("启用电池管理","Enable Battery Management")
-            alert.informativeText=AidenteL10n.t("查看电池无需授权。限充和 MagSafe 指示灯共用一个后台服务，需要 macOS 管理员授权安装。成功后才启用；取消则保持关闭。密码只在 macOS 系统窗口输入。","Battery viewing needs no authorization. Charge limits and MagSafe LEDs share one helper, installed with macOS administrator authorization. Management is enabled only after success. Cancel leaves it off. Enter your password only in the macOS dialog.")
-            alert.addButton(withTitle:AidenteL10n.t("继续启用","Continue"));alert.addButton(withTitle:AidenteL10n.t("取消","Cancel"))
-            let response:NSApplication.ModalResponse
-            if let window=NSApp.keyWindow {
-                response=await withCheckedContinuation { continuation in alert.beginSheetModal(for:window) { continuation.resume(returning:$0) } }
-            } else { response=alert.runModal() }
-            guard response == .alertFirstButtonReturn else { return false }
-        }
         guard !AidenteRuntime.isUIPreview else { return false }
         do {
-            if needsRepair { try await helper.repair() } else { try await helper.enableForUser() }
+            try await helper.enableForUser()
             onAuthorized()
             Defaults[.manageCharging]=true
             Defaults[.didCompleteBatterySetup]=true
@@ -80,4 +69,6 @@ import SwiftUI
         Defaults[.didCompleteBatterySetup] = true
         welcome = nil
     }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool { !enabling }
 }

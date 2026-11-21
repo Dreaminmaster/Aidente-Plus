@@ -20,6 +20,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
     private var powerWidthObservation: Task<Void, Never>?
     private var previewWindow: NSWindow?
     private var dashboardWindow: NSWindow?
+    var shouldShowDashboardOnLaunch: Bool { Defaults[.popoverShowOnLaunch] || !statusItem.isVisible }
 
     init(
         viewModel: MenuViewModel,
@@ -45,6 +46,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
             }
         }
         setupPersistentHostingView()
+        updateStatusItemLength()
         startDisplayObservation()
         startTransitionObservation()
     }
@@ -140,9 +142,8 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         let hasLegacyPower = Defaults[.menuBarReadoutStyle] != .batteryPercentage
         statusItem.isVisible = hasIcon || hasMetrics || hasLegacyPower
         if !AidenteRuntime.isUIPreview {
-            let policy: NSApplication.ActivationPolicy = Defaults[.showDockIcon] || !statusItem.isVisible ? .regular : .accessory
+            let policy: NSApplication.ActivationPolicy = Defaults[.showDockIcon] ? .regular : .accessory
             if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
-            if !statusItem.isVisible && !Defaults[.popoverShowOnLaunch] { Defaults[.popoverShowOnLaunch] = true }
         }
         guard statusItem.isVisible, let hosting = statusHosting else { return }
         hosting.invalidateIntrinsicContentSize()

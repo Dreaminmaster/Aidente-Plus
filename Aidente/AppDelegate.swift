@@ -103,7 +103,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         IOObjectRelease(batteryIOService)
 
         if !AidenteRuntime.isUIPreview && Defaults[.launchAtLogin]
-            && !LaunchAtLoginService.shared.isEnabled
+            && !LaunchAtLoginService.shared.isEnabled && !LaunchAtLoginService.shared.requiresApproval
         {
             LaunchAtLoginService.shared.setLaunchAtLogin(true)
         }
@@ -121,7 +121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             observePowerEvents()
             openSettingsFromCommandLineIfRequested()
             BatteryManagementSetup.shared.showWelcomeIfNeeded()
-            if !AidenteRuntime.isUIPreview && Defaults[.popoverShowOnLaunch] { statusBarManager.showPopoverForPreview() }
+            if !AidenteRuntime.isUIPreview && statusBarManager.shouldShowDashboardOnLaunch { statusBarManager.showPopoverForPreview() }
             if AidenteRuntime.isUIPreview, let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--dump-preview-metrics=") }) {
                 Task {
                     try? await Task.sleep(for: .seconds(4))
@@ -200,6 +200,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         PowerMetadataService.shared.start()
         configureApplicationActions()
         BatteryManagementSetup.shared.onEnabled = { [weak self] in self?.chargeManager.retryControlAfterRepair() }
+        BatteryManagementSetup.shared.onDisable = { [weak self] in try await self?.chargeManager.disableChargingManagement() }
         if !AidenteRuntime.isUIPreview { AidenteAppShortcuts.updateAppShortcutParameters() }
         SleepBehaviorService.shared.startMonitoring()
         configureCompleteUninstaller()

@@ -14,17 +14,30 @@ class LaunchAtLoginService {
 
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
+            try apply(enabled)
         } catch {
             logger.error(
                 "Failed to \(enabled ? "enable" : "disable") launch at login: \(error)"
             )
         }
     }
+
+    func apply(_ enabled: Bool) throws {
+        let service = SMAppService.mainApp
+        switch (enabled, service.status) {
+        case (true, .enabled), (true, .requiresApproval),
+             (false, .notRegistered), (false, .notFound):
+            return
+        case (true, _):
+            try service.register()
+        case (false, _):
+            try service.unregister()
+        }
+    }
+
+    var requiresApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
+
+    func openSettings() { SMAppService.openSystemSettingsLoginItems() }
 
     func unregisterForUninstall() async throws {
         let service = SMAppService.mainApp

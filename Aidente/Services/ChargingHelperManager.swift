@@ -63,6 +63,16 @@ final class ChargingHelperManager {
             failure = nil
             guard !isRunningFromDiskImage else { throw ChargingHelperManagerError.runningFromDiskImage }
             refreshStatus()
+            if force && isInstalled {
+                do {
+                    try await ping()
+                    verified = true
+                    registrationError = nil
+                    return
+                } catch {
+                    logger.notice("Existing control service failed its health check; requesting repair")
+                }
+            }
             if force || !isInstalled {
                 disconnect()
                 try await LocalControlInstaller.run(uninstall: false)
