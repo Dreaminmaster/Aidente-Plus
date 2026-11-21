@@ -8,6 +8,8 @@ if [[ -e "$destination" ]]; then
     exit 1
 fi
 codesign --verify --deep --strict Dist/Aidente.app
+app_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Dist/Aidente.app/Contents/Info.plist)
+[[ -n "$app_version" ]]
 staging_dir=$(mktemp -d /tmp/aidente-dmg.XXXXXX)
 mount_dir=$(mktemp -d /tmp/aidente-dmg-check.XXXXXX)
 mounted=0
@@ -19,12 +21,12 @@ cleanup() {
 trap cleanup EXIT
 ditto Dist/Aidente.app "$staging_dir/Aidente.app"
 ln -s /Applications "$staging_dir/Applications"
-cat > "$staging_dir/安装说明.txt" <<'TEXT'
-Aidente 6.2.8 · Apple Silicon / macOS 14+
+print -r -- "Aidente $app_version · Apple Silicon / macOS 14+" > "$staging_dir/安装说明.txt"
+cat >> "$staging_dir/安装说明.txt" <<'TEXT'
 
 安装：将 Aidente.app 拖入 Applications，推出磁盘映像，再从“应用程序”打开。
 
-首次打开：查看电池信息无需授权。选择“启用电池管理”后，才安装限充和指示灯共用的后台服务，并由 macOS 请求管理员授权；“稍后，仅查看”不启用控制。
+首次打开：可查看或跳过使用引导，之后能在“设置 → 关于”重看。查看电池信息无需授权。选择“启用电池管理”后，由 macOS 在需要时申请管理员授权，安装限充和指示灯共用的后台服务。
 
 指示灯：未启用时也能选择模式。点击“启用并继续”，授权成功后才开启并应用选择；取消保持关闭。已启用后的普通切换不重复索要密码；服务缺失或更新时才需修复。
 

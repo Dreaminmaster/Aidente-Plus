@@ -50,6 +50,8 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
     private let nativeSnapshotKey = "nativeLimitBeforeAidente"
     private let nativePreferencesKey = "nativePreferencesBeforeAidente"
     private let dischargeSafetyKey = "dischargeSafetyState"
+    private let nativeAdapterRecoveryKey = "nativeAdapterReleasePending"
+    private var nativeAdapterOwned = false
     private lazy var dischargeSafety: DischargeSafetyPolicy = {
         guard let data = controlDefaults.data(forKey: dischargeSafetyKey),
               let stored = try? JSONDecoder().decode(DischargeSafetyPolicy.self, from: data) else { return DischargeSafetyPolicy() }
@@ -141,7 +143,16 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
     }
 
     private func resetAfterDisconnectIfNeeded() {
-        guard clients == 0, resetOnDisconnect, !sleeping, hasControlledPower else { return }
+        guard clients == 0, !sleeping, hasControlledPower else { return }
+        if nativeAdapterOwned {
+            // A planned managed hold may survive app exit. An adapter override
+            // cannot: release it when the last control connection disappears.
+            policy?.adapter = true
+            policy?.charging = false
+            do { try applyEffectivePolicy() }
+            catch { logger.error("Native adapter release after disconnect failed: \(error.localizedDescription, privacy: .public)") }
+        }
+        guard resetOnDisconnect else { return }
         if let pid = lastClientPID, kill(pid, 0) == 0 || errno == EPERM {
             return // The GUI is alive but suspended or reconnecting.
         }
@@ -185,6 +196,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 try self.applyEffectivePolicy()
                 reply(true, nil)
             } catch {
+                self.abandonNativeDischargeAfterFailure()
                 self.logger.error("POWER_POLICY_FAILED \(error.localizedDescription, privacy: .public)")
                 if case SMCError.notPrivileged = error {
                     reply(false, "FIRMWARE_ACCESS_DENIED: system firmware denied charge-control access")
@@ -196,8 +208,14 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
     }
 
     private func applyEffectivePolicy() throws {
+        // On restart, release an adapter override left by the previous process
+        // before accepting any new charging policy.
+        if !nativeAdapterOwned || policy == nil { try releaseNativeAdapterIfNeeded() }
         guard let policy else { return }
         let target = policy.effective
+        if target.adapter || !policy.managed || battery.capabilities.inhibitChargeControl {
+            try releaseNativeAdapterIfNeeded()
+        }
         if battery.usesFirmwareChargeLimit {
             let controller = FirmwareChargeLimitController(registers: SMCFirmwareLimitRegisters())
             if target.adapter, battery.capabilities.forceDischargeControl,
@@ -247,14 +265,18 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
         } else if !battery.capabilities.inhibitChargeControl, let nativeLimit {
             let controller = NativeChargeTransaction(registers: PowerUIChargeRegisters(client: nativeLimit))
             guard policy.managed else {
+                try releaseNativeAdapterIfNeeded()
                 try restoreNativeLimit(); nativePolicy.reset(); clearDischargeSafety(); return
             }
             let percentage = try SMCBattery.macOSPercentage()
+            if target.adapter || percentage <= policy.chargeCeiling {
+                try releaseNativeAdapterIfNeeded()
+            }
             let beforeSafety = dischargeSafety
-            let rawCapacity = policy.adapter ? nil : (try? SMCBattery.rawCapacity())
+            let rawCapacity = target.adapter ? nil : (try? SMCBattery.rawCapacity())
             let raw = rawCapacity.map { min(100, max(0, $0.current / $0.full * 100)) } ?? .nan
-            let safetyStop = dischargeSafety.mustStop(managed: policy.managed,
-                dischargeRequested: !policy.adapter, target: policy.chargeCeiling,
+            let safetyStop = policy.sleeping ? false : dischargeSafety.mustStop(managed: policy.managed,
+                dischargeRequested: !target.adapter, target: policy.chargeCeiling,
                 displayed: percentage, raw: raw, now: Date())
             if dischargeSafety != beforeSafety {
                 controlDefaults.set(try JSONEncoder().encode(dischargeSafety), forKey: dischargeSafetyKey)
@@ -268,7 +290,10 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 logger.error("DISCHARGE_SAFETY_EVIDENCE target=\(policy.chargeCeiling, privacy: .public) display=\(percentage, privacy: .public) rawCurrentMAh=\(rawCurrent, privacy: .public) rawFullMAh=\(rawFull, privacy: .public) currentA=\(current, privacy: .public) cause=\(cause, privacy: .public)")
                 self.policy = nil
                 nativePolicy.reset()
-                do { try restoreNativeLimit() }
+                do {
+                    try releaseNativeAdapterIfNeeded()
+                    try restoreNativeLimit()
+                }
                 catch {
                     // Keep the recovery snapshot. If restoring its precise value
                     // fails, separately ask the agent to unregister the drain.
@@ -290,14 +315,53 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 controlDefaults.set(try JSONEncoder().encode(controller.snapshot()), forKey: nativePreferencesKey)
                 guard controlDefaults.synchronize() else { throw CocoaError(.fileWriteUnknown) }
             }
+            let useDirectDischarge = battery.capabilities.forceDischargeControl && !target.adapter
+                && externalConnected && percentage > policy.chargeCeiling
+            // Hold at the current displayed level while using the independent
+            // adapter switch. The firmware limit itself must not request a
+            // second discharge after the adapter has been restored.
+            let nativeTarget = useDirectDischarge ? percentage : limit
+            if !useDirectDischarge { try releaseNativeAdapterIfNeeded() }
             let previous = try controller.snapshot()
-            try controller.set(limit)
+            try controller.set(nativeTarget)
+            if useDirectDischarge { try engageNativeAdapterDischarge() }
             if try controller.snapshot() != previous {
-                logger.notice("NATIVE_POLICY_APPLIED display=\(percentage) target=\(limit) chargingRequested=\(target.charging) dischargeRequested=\(!target.adapter) sleeping=\(policy.sleeping)")
+                logger.notice("NATIVE_POLICY_APPLIED display=\(percentage) target=\(nativeTarget) directDischarge=\(useDirectDischarge) chargingRequested=\(target.charging) dischargeRequested=\(!target.adapter) sleeping=\(policy.sleeping)")
             }
         } else {
             try battery.applyPowerState(charging: target.charging, adapter: target.adapter)
         }
+    }
+
+    private func engageNativeAdapterDischarge() throws {
+        if !nativeAdapterOwned {
+            // Do not take over an override set by a different controller.
+            guard try !battery.getForceDischarging() else { throw SMCBatteryError.stateVerificationFailed }
+            controlDefaults.set(true, forKey: nativeAdapterRecoveryKey)
+            guard controlDefaults.synchronize() else { throw CocoaError(.fileWriteUnknown) }
+            nativeAdapterOwned = true
+        }
+        if try !battery.getForceDischarging() { try battery.setForceDischarging(true) }
+        guard try battery.getForceDischarging() else { throw SMCBatteryError.stateVerificationFailed }
+    }
+
+    private func releaseNativeAdapterIfNeeded() throws {
+        guard controlDefaults.bool(forKey: nativeAdapterRecoveryKey) else { return }
+        if try battery.getForceDischarging() { try battery.setForceDischarging(false) }
+        guard try !battery.getForceDischarging() else { throw SMCBatteryError.stateVerificationFailed }
+        controlDefaults.removeObject(forKey: nativeAdapterRecoveryKey)
+        guard controlDefaults.synchronize() else {
+            controlDefaults.set(true, forKey: nativeAdapterRecoveryKey)
+            throw CocoaError(.fileWriteUnknown)
+        }
+        nativeAdapterOwned = false
+    }
+
+    private func abandonNativeDischargeAfterFailure() {
+        guard nativeAdapterOwned else { return }
+        policy = nil
+        do { try releaseNativeAdapterIfNeeded() }
+        catch { logger.fault("NATIVE_ADAPTER_RELEASE_FAILED \(error.localizedDescription, privacy: .public)") }
     }
 
     private func clearDischargeSafety() {
@@ -353,6 +417,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 logger.notice("POWER_EVENT \(reason, privacy: .public) charging=\(policy.effective.charging) adapter=\(policy.effective.adapter)")
             }
         } catch {
+            abandonNativeDischargeAfterFailure()
             logger.error("POWER_RECONCILE_FAILED \(reason, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -540,6 +605,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
     }
 
     private func restoreOnQueue() throws {
+        try releaseNativeAdapterIfNeeded()
         try energyModes.restore()
         try restoreNativeLimit()
         ledPolicyConfigured = false; ledEnabled = false; requestedLED = 0
