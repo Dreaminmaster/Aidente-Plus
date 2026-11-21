@@ -57,8 +57,8 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         startTransitionObservation()
     }
 
-    private func makeDashboardRootView() -> some View {
-        AidenteAppearanceRoot {
+    private func makeDashboardRootView(drawsBackdrop: Bool = true) -> some View {
+        AidenteAppearanceRoot(usesNativeGlass: drawsBackdrop) {
         DashboardPopoverView(
             viewModel: viewModel,
             onOpenSettings: { [weak self] tab in
@@ -70,7 +70,8 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
             },
             onQuit: { [weak self] in
                 self?.viewModel.quit()
-            }
+            },
+            drawsBackdrop: drawsBackdrop
         )
         }
     }
@@ -122,9 +123,10 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
                 [.showDockIcon, .menuBarIconStyle, .menuBarMetrics, .menuBarHiddenMetricIcons, .menuBarItemSpacing,
                  .activeStatusItemsOnly, .menuBarUpdateInterval, .menuBarLowPowerColor, .appLanguage,
                  .showBatteryStateInStatusIcon, .menuBarReadoutStyle,
-                 .batteryPercentageDisplayLocation, .chargingIndicatorStyle, .menuBarMainIconPosition], initial: true
+                 .batteryPercentageDisplayLocation, .chargingIndicatorStyle, .menuBarMainIconPosition, .interfaceMaterialStyle], initial: true
             ) {
                 guard let self else { return }
+                (self.popoverPanel?.contentView as? StatusMenuSurface)?.apply(Defaults[.interfaceMaterialStyle])
                 self.powerWidthObservation?.cancel()
                 self.powerWidthObservation = Task { [weak self] in
                     while !Task.isCancelled {
@@ -232,12 +234,17 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         dismissMenu()
         let anchorWindow = sender.window
         panelLogger.notice("PANEL_CREATE anchor=\(anchorWindow != nil)")
-        let hosting = NSHostingController(rootView: makeDashboardRootView())
+        let hosting = NSHostingController(rootView: makeDashboardRootView(drawsBackdrop: false))
+        let controller = NSViewController()
+        controller.addChild(hosting)
+        let surface = StatusMenuSurface(content: hosting.view)
+        controller.view = surface
+        surface.apply(Defaults[.interfaceMaterialStyle])
         // The nonactivating flag must be present at creation. Activating a regular app
         // here would leave another application's full-screen Space to show its windows.
         let panel = StatusPopoverPanel(contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.contentViewController = hosting
+        panel.contentViewController = controller
         panel.title = AidenteL10n.t("Aidente 菜单", "Aidente Menu")
         panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
@@ -250,9 +257,6 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications]
         panel.delegate = self
         panel.onEscape = { [weak self] in self?.dismissMenu() }
-        hosting.view.wantsLayer = true
-        hosting.view.layer?.cornerRadius = 15
-        hosting.view.layer?.masksToBounds = true
         let size = panelSize
         let pointer = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? anchorWindow?.screen ?? NSScreen.main
@@ -266,6 +270,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         popoverPanel = panel
         viewModel.menuWillOpen()
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self, weak panel] _ in
+            guard MainActor.assumeIsolated({ !PopoverEditorState.shared.isTrackingNativeMenu }) else { return }
             let point = NSEvent.mouseLocation
             Task { @MainActor in
                 guard let self, let panel, self.popoverPanel === panel else { return }
@@ -276,6 +281,7 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         }
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self, weak panel] event in
             MainActor.assumeIsolated {
+                guard !PopoverEditorState.shared.isTrackingNativeMenu else { return }
                 if self?.isPointerOverStatusItem() == true { return }
                 if let window = event.window, window !== panel,
                    window.sheetParent !== panel, window.parent !== panel,
@@ -466,4 +472,77 @@ private final class StatusPopoverPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     override func cancelOperation(_ sender: Any?) { onEscape?() }
+}
+
+/// The nonactivating panel owns its backdrop. The hosted SwiftUI view is kept
+/// alive when materials change, so scroll and control states are retained.
+private final class StatusMenuSurface: NSView {
+    private let content: NSView
+    private var backdrop: NSView?
+    private var material: InterfaceMaterialStyle?
+
+    init(content: NSView) {
+        self.content = content
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func apply(_ style: InterfaceMaterialStyle) {
+        guard material != style else { return }
+        material = style
+        if #available(macOS 26, *), let glass = backdrop as? NSGlassEffectView {
+            glass.contentView = nil
+        } else {
+            content.removeFromSuperview()
+        }
+        backdrop?.removeFromSuperview()
+
+        let view: NSView
+        if #available(macOS 26, *), style == .liquidGlass {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            glass.cornerRadius = 15
+            view = glass
+        } else {
+            if style == .solid {
+                view = SolidStatusMenuBackdrop()
+            } else {
+                let effect = NSVisualEffectView()
+                effect.material = style == .frosted ? .hudWindow : .popover
+                effect.state = .active
+                effect.blendingMode = .behindWindow
+                view = effect
+            }
+            view.wantsLayer = true
+            view.layer?.cornerRadius = 15
+            view.layer?.masksToBounds = true
+        }
+        view.frame = bounds
+        view.autoresizingMask = [.width, .height]
+        addSubview(view)
+        // Size the new parent first. Resizing a zero-sized parent with the
+        // host already attached would apply the entire size change twice.
+        content.frame = view.bounds
+        content.autoresizingMask = [.width, .height]
+        if #available(macOS 26, *), let glass = view as? NSGlassEffectView {
+            glass.contentView = content
+        } else {
+            view.addSubview(content)
+        }
+        backdrop = view
+    }
+}
+
+private final class SolidStatusMenuBackdrop: NSView {
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
+    }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
 }

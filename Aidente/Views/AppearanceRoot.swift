@@ -7,13 +7,17 @@ struct AidenteAppearanceRoot<Content: View>: View {
     @Default(.interfaceAppearance) private var mode
     @Default(.interfaceMaterialStyle) private var material
     let content: Content
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    let usesNativeGlass: Bool
+    init(usesNativeGlass: Bool = true, @ViewBuilder content: () -> Content) {
+        self.usesNativeGlass = usesNativeGlass
+        self.content = content()
+    }
     var body: some View {
         glassContainer.preferredColorScheme(mode == .system ? nil : mode == .dark ? .dark : .light)
             .background(WindowAppearanceBridge(mode: mode).frame(width: 0, height: 0))
     }
     @ViewBuilder private var glassContainer: some View {
-        if #available(macOS 26.0, *), material == .liquidGlass {
+        if #available(macOS 26.0, *), usesNativeGlass, material == .liquidGlass {
             NativeGlassWindowContent(content: content)
                 .frame(maxWidth: .infinity, maxHeight: .infinity).ignoresSafeArea()
         } else { content }

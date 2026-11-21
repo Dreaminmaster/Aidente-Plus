@@ -7,6 +7,7 @@ import AidenteShared
     static let shared = PopoverEditorState()
     var isEditing = false
     var isAddingWidget = false
+    var isTrackingNativeMenu = false
     var requestOpen: (() -> Void)?
     var updateSize: (() -> Void)?
     func beginEditing() { isEditing = true; requestOpen?() }
@@ -25,20 +26,12 @@ import AidenteShared
     }
 }
 
-enum DashboardMenu: Hashable { case options, appScope }
-
-private struct DashboardMenuAnchors: PreferenceKey {
-    static let defaultValue: [DashboardMenu: Anchor<CGRect>] = [:]
-    static func reduce(value: inout [DashboardMenu: Anchor<CGRect>], nextValue: () -> [DashboardMenu: Anchor<CGRect>]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
-}
-
 struct DashboardPopoverView: View {
     @Environment(\.colorScheme) private var scheme
     let viewModel: MenuViewModel
     let onOpenSettings: (SettingsTab) -> Void
     let onQuit: () -> Void
+    var drawsBackdrop = true
     @Default(.interfaceAppearance) private var appearance
     @Default(.popoverWidgets) private var widgetIDs
     @Default(.chargeLimit) private var limit
@@ -54,8 +47,6 @@ struct DashboardPopoverView: View {
     @State private var editingLimit = false
     @State private var enteringLimit = false
     @State private var typedLimit = 80
-    @Default(.showAllRunningApps) private var showAllApps
-    @State private var openMenu: DashboardMenu?
     @State private var dragged: String?
     private let editor = PopoverEditorState.shared
     private var canControl: Bool { viewModel.manageChargingEnabled && !AidenteRuntime.isUIPreview && !viewModel.systemCalibrationActive }
@@ -184,33 +175,18 @@ struct DashboardPopoverView: View {
                     .onLongPressGesture(minimumDuration: 0.5) { editor.isEditing = true }
                 Spacer(minLength: 4)
                 Button {
-                    openMenu = nil
                     editor.isEditing.toggle()
                 } label: {
                     Label(AidenteL10n.t(editor.isEditing ? "完成" : "自定义", editor.isEditing ? "Done" : "Customize"),
                           systemImage: editor.isEditing ? "checkmark" : "slider.horizontal.3")
                 }.accessibilityLabel(AidenteL10n.t("自定义弹出窗口", "Customize Popover"))
-                Button { openMenu = openMenu == .options ? nil : .options } label: {
-                    Image(systemName: "ellipsis.circle").foregroundStyle(openMenu == .options ? Color.accentColor : Color.primary)
-                        .frame(minWidth: 24, minHeight: 24).contentShape(Rectangle())
-                }.accessibilityLabel(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"))
-                    .anchorPreference(key: DashboardMenuAnchors.self, value: .bounds) { [.options: $0] }
+                DashboardMenuButton(symbol: "ellipsis.circle", label: AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"), populate: populateOptionsMenu)
+                    .frame(width: 24, height: 24)
             }.buttonStyle(.borderless).font(.system(size: 11))
                 .padding(.horizontal, 16).frame(height: 41)
         }
         .frame(width: 402, height: PopoverLayout.height(widgets: widgetIDs, editing: editor.isEditing, adding: editor.isAddingWidget, calibrating: viewModel.calibrationActive))
-        .background(AidenteMaterialLayer())
-        .overlayPreferenceValue(DashboardMenuAnchors.self) { anchors in
-            GeometryReader { proxy in
-                if let menu = openMenu, let anchor = anchors[menu] {
-                    let button = proxy[anchor]
-                    if button.intersects(CGRect(origin: .zero, size: proxy.size)) {
-                        menuOverlay(menu, button: button, available: proxy.size)
-                    }
-                }
-            }
-            .allowsHitTesting(openMenu != nil)
-        }
+        .background { if drawsBackdrop { AidenteMaterialLayer() } }
         .tint(.accentColor)
         .disabled(CompleteUninstaller.shared.isRunning)
         .onAppear { draft = Double(viewModel.effectiveChargeLimit) }
@@ -239,79 +215,31 @@ struct DashboardPopoverView: View {
             Button(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
         }
     }
-    private func menuOverlay(_ menu: DashboardMenu, button: CGRect, available: CGSize) -> some View {
-        let width = min(menu == .options ? 232.0 : 208.0, available.width - 16)
-        let above = max(0, button.minY - 12)
-        let below = max(0, available.height - button.maxY - 12)
-        let opensAbove = menu == .options || below < 80 && above > below
-        let height = min(menu == .options ? 248.0 : 70.0, opensAbove ? above : below)
-        let x = min(max(button.maxX - width, 8), available.width - width - 8)
-        let y = opensAbove ? button.minY - height - 4 : button.maxY + 4
-        return ZStack(alignment: .topLeading) {
-            Color.clear.contentShape(Rectangle()).onTapGesture { openMenu = nil }
-                .accessibilityHidden(true)
-            ScrollView {
-                if menu == .options {
-                    panelOptions
-                } else {
-                    VStack(spacing: 2) {
-                        scopeChoice(true, AidenteL10n.t("所有运行中的 App", "All Running Apps"))
-                        scopeChoice(false, AidenteL10n.t("仅高能耗 App", "Significant Energy Only"))
-                    }
-                }
-            }.scrollIndicators(menu == .options ? .automatic : .hidden)
-                .frame(width: width, height: height)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 11))
-                .overlay { RoundedRectangle(cornerRadius: 11).strokeBorder(.primary.opacity(0.15)).allowsHitTesting(false) }
-                .shadow(color: .black.opacity(0.22), radius: 9, y: 3)
-                .offset(x: x, y: y)
-                .accessibilityAddTraits(.isModal)
-                .onExitCommand { openMenu = nil }
+    private func populateOptionsMenu(_ menu: NSMenu, _ target: DashboardMenuButton.Coordinator) {
+        let heading = NSMenuItem(title: AidenteL10n.t("小组件", "Widgets"), action: nil, keyEquivalent: "")
+        menu.addItem(heading)
+        for widget in PopoverWidget.allCases {
+            menu.addItem(target.item(widget.title, checked: widgetIDs.contains(widget.id)) {
+                if widgetIDs.contains(widget.id) { widgetIDs.removeAll { $0 == widget.id } }
+                else { widgetIDs.append(widget.id) }
+            })
         }
+        menu.addItem(.separator())
+        let appearanceItem = NSMenuItem(title: AidenteL10n.t("界面外观", "Appearance"), action: nil, keyEquivalent: "")
+        let appearances = NSMenu()
+        for style in InterfaceAppearance.allCases {
+            appearances.addItem(target.item(style.title, checked: appearance == style) { appearance = style })
+        }
+        appearanceItem.submenu = appearances
+        menu.addItem(appearanceItem)
+        menu.addItem(target.item(AidenteL10n.t("在 Dock 中显示", "Show in Dock"), checked: showDockIcon) { showDockIcon.toggle() })
+        menu.addItem(target.item(AidenteL10n.t("弹出窗口设置…", "Popover Settings…")) { onOpenSettings(.dashboard) })
+        menu.addItem(target.item(AidenteL10n.t("菜单栏样式…", "Menu Bar Appearance…")) { onOpenSettings(.menuBar) })
+        menu.addItem(target.item(AidenteL10n.t("充电器指示灯…", "Charger LED…")) { onOpenSettings(.otherAppearance) })
+        menu.addItem(.separator())
+        menu.addItem(target.item(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit))
     }
 
-    private func scopeChoice(_ selection: Bool, _ title: String) -> some View {
-        Button {
-            showAllApps = selection
-            openMenu = nil
-        } label: {
-            HStack {
-                Text(title)
-                Spacer()
-                if showAllApps == selection { Image(systemName: "checkmark").accessibilityHidden(true) }
-            }.padding(.horizontal, 9).frame(height: 30).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-            .accessibilityAddTraits(showAllApps == selection ? .isSelected : [])
-    }
-
-    private var panelOptions: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance")).fontWeight(.semibold)
-                Spacer()
-                Button { openMenu = nil } label: { Image(systemName: "xmark") }
-                    .accessibilityLabel(AidenteL10n.t("收起选项", "Close Options"))
-            }
-            Toggle(AidenteL10n.t("在 Dock 中显示", "Show in Dock"), isOn: $showDockIcon).toggleStyle(.switch)
-            Picker(AidenteL10n.t("界面外观", "Appearance"), selection: $appearance) {
-                ForEach(InterfaceAppearance.allCases) { Text($0.title).tag($0) }
-            }.pickerStyle(.segmented).labelsHidden()
-            Button(AidenteL10n.t("弹出窗口设置…", "Popover Settings…")) { onOpenSettings(.dashboard) }
-            Button(AidenteL10n.t("菜单栏样式…", "Menu Bar Appearance…")) { onOpenSettings(.menuBar) }
-            Button(AidenteL10n.t("充电器指示灯…", "Charger LED…")) { onOpenSettings(.otherAppearance) }
-            Divider()
-            ForEach(PopoverWidget.allCases) { widget in
-                Toggle(widget.title, isOn: Binding(get: { widgetIDs.contains(widget.id) }, set: { selected in
-                    if selected { if !widgetIDs.contains(widget.id) { widgetIDs.append(widget.id) } }
-                    else { widgetIDs.removeAll { $0 == widget.id } }
-                })).toggleStyle(.checkbox)
-            }
-            Divider()
-            Button(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
-                .keyboardShortcut("q", modifiers: .command)
-        }.buttonStyle(.plain).font(.callout)
-            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-    }
     private func commitTypedLimit() {
         enteringLimit = false
         guard canEditLimit else { return }
@@ -336,7 +264,7 @@ struct DashboardPopoverView: View {
                 dashboardValue(AidenteL10n.t("温度", "Temperature"), viewModel.batteryTemperatureText)
             }
         case .capacityHistory: PopoverCapacityWidget(viewModel: viewModel)
-        case .energyApps: EnergyAppsWidget(viewModel: viewModel, openMenu: $openMenu)
+        case .energyApps: EnergyAppsWidget(viewModel: viewModel)
         case .careActions:
             VStack(alignment: .leading, spacing: 8) {
                 if viewModel.calibrationActive {
@@ -365,7 +293,6 @@ struct DashboardPopoverView: View {
 
 struct EnergyAppsWidget: View {
     let viewModel: MenuViewModel
-    var openMenu: Binding<DashboardMenu?>? = nil
     @State private var quitting: AppEnergyUsageSnapshot?
     @State private var showingQuitConfirmation = false
     @State private var forceQuit = false
@@ -381,24 +308,10 @@ struct EnergyAppsWidget: View {
                 Text(showAll ? AidenteL10n.t("运行中的 App", "Running Apps") : AidenteL10n.t("高能耗 App", "Significant Energy")).font(.caption.weight(.semibold))
                 Text("\(viewModel.topEnergyApps.count)").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                Group {
-                    if let openMenu {
-                        Button { openMenu.wrappedValue = openMenu.wrappedValue == .appScope ? nil : .appScope } label: {
-                            Image(systemName: "line.3.horizontal.decrease")
-                                .frame(width: 30, height: 24).contentShape(Rectangle())
-                                .foregroundStyle(openMenu.wrappedValue == .appScope ? Color.accentColor : Color.primary)
-                        }.buttonStyle(.plain)
-                            .anchorPreference(key: DashboardMenuAnchors.self, value: .bounds) { [.appScope: $0] }
-                    } else {
-                        Menu {
-                            Picker(AidenteL10n.t("App 列表显示范围", "App List Scope"), selection: $showAll) {
-                                Text(AidenteL10n.t("所有运行中的 App", "All Running Apps")).tag(true)
-                                Text(AidenteL10n.t("仅高能耗 App", "Significant Energy Only")).tag(false)
-                            }
-                        } label: { Image(systemName: "line.3.horizontal.decrease") }
-                            .menuStyle(.borderlessButton).fixedSize()
-                    }
-                }.accessibilityLabel(AidenteL10n.t("App 列表显示范围", "App List Scope"))
+                DashboardMenuButton(symbol: "line.3.horizontal.decrease", label: AidenteL10n.t("App 列表显示范围", "App List Scope")) { menu, target in
+                    menu.addItem(target.item(AidenteL10n.t("所有运行中的 App", "All Running Apps"), checked: showAll) { showAll = true })
+                    menu.addItem(target.item(AidenteL10n.t("仅高能耗 App", "Significant Energy Only"), checked: !showAll) { showAll = false })
+                }.frame(width: 28, height: 24)
                     .help(AidenteL10n.t("按名称固定排序，不按功率换位；鼠标停留时固定名单，离开后更新。所有运行中的 App 包括空闲应用，后台进程可在能源使用设置中选择。", "Names stay in alphabetical order. Hover holds the list while readings update. All Running Apps includes idle apps; background processes are optional in Energy Use settings."))
             }
             Text(AidenteL10n.t("App 功率为进程能耗估算，不等于电脑总功率，也不作为整机分流。", "App watts are process estimates, not total Mac power or a hardware power breakdown."))
@@ -625,5 +538,93 @@ private struct WidgetEditingDrag: ViewModifier {
             content.onDrag { dragged = widget.id; return NSItemProvider(object: widget.id as NSString) }
                 .onDrop(of: [.text], delegate: WidgetReorderDelegate(target: widget.id, ids: $ids, dragged: $dragged))
         } else { content }
+    }
+}
+
+/// An AppKit menu anchored to the actual button, including in a nonactivating panel.
+private struct DashboardMenuButton: NSViewRepresentable {
+    let symbol: String
+    let label: String
+    let populate: (NSMenu, Coordinator) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(populate: populate) }
+
+    func makeNSView(context: Context) -> MenuButton {
+        let button = MenuButton()
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 5
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.open(_:))
+        return button
+    }
+
+    func updateNSView(_ button: MenuButton, context: Context) {
+        context.coordinator.populate = populate
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+    }
+
+    final class MenuButton: NSButton {
+        private var tracking: NSTrackingArea?
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let tracking { removeTrackingArea(tracking) }
+            let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+            addTrackingArea(area)
+            tracking = area
+        }
+        override func mouseEntered(with event: NSEvent) {
+            contentTintColor = .controlAccentColor
+            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.13).cgColor
+        }
+        override func mouseExited(with event: NSEvent) {
+            contentTintColor = nil
+            layer?.backgroundColor = nil
+        }
+    }
+
+    @MainActor final class Coordinator: NSObject {
+        private final class Choice: NSObject {
+            let action: () -> Void
+            init(_ action: @escaping () -> Void) { self.action = action }
+        }
+        var populate: (NSMenu, Coordinator) -> Void
+        init(populate: @escaping (NSMenu, Coordinator) -> Void) { self.populate = populate }
+
+        func item(_ title: String, checked: Bool = false, action: @escaping () -> Void) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: #selector(select(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = Choice(action)
+            item.state = checked ? .on : .off
+            return item
+        }
+
+        @objc func select(_ item: NSMenuItem) {
+            let action = (item.representedObject as? Choice)?.action
+            DispatchQueue.main.async { action?() }
+        }
+
+        @objc func open(_ button: NSButton) {
+            let editor = PopoverEditorState.shared
+            guard !editor.isTrackingNativeMenu, let window = button.window else { return }
+            let menu = NSMenu()
+            populate(menu, self)
+            let anchor = window.convertToScreen(button.convert(button.bounds, to: nil))
+            let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? anchor
+            let opensAbove = anchor.minY - screen.minY < menu.size.height + 6
+                && screen.maxY - anchor.maxY > anchor.minY - screen.minY
+            let upperY = anchor.maxY + menu.size.height + 3
+            let screenPoint = NSPoint(
+                x: max(screen.minX + 6, anchor.maxX - menu.size.width),
+                y: opensAbove ? min(screen.maxY - 3, upperY) : anchor.minY - 3
+            )
+            editor.isTrackingNativeMenu = true
+            menu.popUp(positioning: nil, at: button.convert(window.convertPoint(fromScreen: screenPoint), from: nil), in: button)
+            editor.isTrackingNativeMenu = false
+        }
     }
 }
