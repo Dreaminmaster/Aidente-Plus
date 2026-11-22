@@ -5,6 +5,7 @@ import IOKit
 import IOKit.ps
 import IOKit.pwr_mgt
 import os.log
+import smc_power
 
 @MainActor
 class IOKitService {
@@ -146,12 +147,16 @@ class IOKitService {
     private func emitMetrics() {
         logger.debug("IOKit notification triggered")
 
-        let powerInfo = getPowerSourceInfo() as? [String: Any]
+        let powerInfo = SystemBatteryReading.powerSource()
+        guard let displayedPercent = try? SMCBattery.macOSPercentage(powerSource: powerInfo) else {
+            logger.error("No valid internal battery percentage; skipping this battery snapshot")
+            return
+        }
         var batteryMetrics = BatteryMetrics()
         var adapterMetrics = AdapterMetrics()
 
-        let percentages = getBatteryPercentages(powerInfo: powerInfo)
-        batteryMetrics.batteryPercentage = percentages.displayed
+        let percentages = getBatteryPercentages(displayedPercent: displayedPercent)
+        batteryMetrics.batteryPercentage = displayedPercent
         batteryMetrics.hardwareBatteryPercentage = percentages.hardware
         batteryMetrics.hasHardwarePercentage = percentages.available
 
@@ -207,15 +212,6 @@ class IOKitService {
         continuation?.yield((batteryMetrics, adapterMetrics))
     }
 
-    private nonisolated func getPowerSourceInfo() -> CFDictionary? {
-        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let sources =
-            IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
-        guard let source = sources.first else { return nil }
-        return IOPSGetPowerSourceDescription(snapshot, source)
-            .takeUnretainedValue()
-    }
-
     private nonisolated func getPropertyValue<T>(_ service: io_service_t, key: String) -> T? {
         if let prop = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0),
            let value = prop.takeRetainedValue() as? T { return value }
@@ -223,28 +219,11 @@ class IOKitService {
         return nested?[key] as? T
     }
 
-    private func getBatteryPercentages(powerInfo: [String: Any]?) -> (
-        displayed: Int, hardware: Int, available: Bool
-    ) {
-        let displayedPercent = powerInfo?[kIOPSCurrentCapacityKey] as? Int ?? 0
-
-        let rawCurrentCapacity: Int =
-            getPropertyValue(batteryService, key: "AppleRawCurrentCapacity")
-            ?? 0
-        let rawMaxCapacity: Int =
-            getPropertyValue(batteryService, key: "AppleRawMaxCapacity") ?? 0
-
-        let hardwarePercent: Int
-        if rawMaxCapacity > 0 {
-            hardwarePercent = (rawCurrentCapacity * 100) / rawMaxCapacity
-        } else {
-            let currentCapacity: Int =
-                getPropertyValue(batteryService, key: "CurrentCapacity")
-                ?? displayedPercent
-            hardwarePercent = currentCapacity
-        }
-
-        return (displayedPercent, hardwarePercent, rawMaxCapacity > 0)
+    private func getBatteryPercentages(displayedPercent: Int) -> (hardware: Int, available: Bool) {
+        guard let current: Int = getPropertyValue(batteryService, key: "AppleRawCurrentCapacity"),
+              let maximum: Int = getPropertyValue(batteryService, key: "AppleRawMaxCapacity"),
+              current >= 0, maximum > 0 else { return (displayedPercent, false) }
+        return (Int(min(100, Double(current) / Double(maximum) * 100)), true)
     }
 
     private func getTimeRemaining(powerInfo: [String: Any]?) -> Int? {

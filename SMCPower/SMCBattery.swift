@@ -146,6 +146,11 @@ public struct SMCBattery: Sendable, BatteryPowerControlling {
     }
 
     public static func macOSPercentage() throws -> Int {
+        try macOSPercentage(powerSource: SystemBatteryReading.powerSource())
+    }
+
+    public static func macOSPercentage(powerSource: [String: Any]?) throws -> Int {
+        if let percentage = SystemBatteryReading.percentage(in: powerSource) { return percentage }
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         guard service != 0 else { throw SMCBatteryError.unsupportedCapability }
         defer { IOObjectRelease(service) }
@@ -153,10 +158,10 @@ public struct SMCBattery: Sendable, BatteryPowerControlling {
             (IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber)?.doubleValue
         }
         guard let current = number("CurrentCapacity"), let maximum = number("MaxCapacity"),
-              current.isFinite, maximum.isFinite, maximum > 0, current >= 0, current <= maximum else {
+              let percentage = SystemBatteryReading.percentage(current: current, maximum: maximum) else {
             throw SMCBatteryError.unsupportedCapability
         }
-        return min(100, max(0, Int((current / maximum * 100).rounded())))
+        return percentage
     }
 
     public static func temperatureCelsius() throws -> Double {
