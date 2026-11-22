@@ -392,3 +392,7 @@ Linux Apple Silicon 电源驱动所检查的 CHWA 在本机不存在，CHLS 在�
 Apple 的限充说明给出的范围是目标附近几个百分点。AlDente 公开说明使用 macOS 百分比作为放电目标，原始容量比例单独用于显示。Chargectl 在 80% 以上同样使用 macOS 原生限充。Ampere 在个别设备上实测原生放电启动可延迟数分钟，xbt-battery 则记录了 macOS 27 的充电标志滞后。这些是各项目实测记录，未将其他机型结果当成本机通过证据。本机检查了 PowerUIAgent 和 powerd 日志，未找到本轮由系统校准接管的证据。参考 [Apple](https://support.apple.com/en-us/102338)、[AlDente](https://apphousekitchen.com/aldente-overview/features/)、[Chargectl](https://github.com/tyldra-org/chargectl#how-it-works)、[Ampere](https://github.com/az-code-lab/ampere#firmware-without-chte-macos-27) 和 [xbt-battery](https://github.com/XBTDMT/xbt-battery/blob/main/docs/MACOS-27.md)。
 
 充电、保持及放电核验改用同一个实测功率判断。系统充电标志和功率矛盾时保持待确认，冲突会清空连续采样计数。只在原生请求有有效电流读数、尚未观察到实际放电或其他进展时，允许后台最多等待八分钟启动。开始后仍使用五分钟无进展保护，实际容量失去过多也会照常停止。App 和后台完整类型检查、180 项充电、16273 项原生策略及 152 项功能回归通过。
+
+采用已安装的 6.2.22 从稳定的 97%、0 mA 开始，避免上一轮从正在充电切换的影响。以约 4 秒间隔同时采集 SMC 的 BUIC、瞬时电流、剩余容量与满充容量，以及 macOS、IORegistry 和 powerd 登记目标。约 4 秒测到负向电流，powerd 登记 95%。约 10 分 50 秒后，剩余容量从 4309 降到 4223 mAh，瞬时电流积分约 87.5 mAh，到达独立的浅放电验收边界。三路整数电量一直为 97%，此时 SMC 原始容量比约 94.5%。本轮确认差异在持续放电期间也存在，结束测试并恢复 95% 日常设置。系统显示 95% 的发布条件仍未通过。
+
+恢复时实测瞬时电流已归零，系统的充电标志仍滞后约 24 秒。随后连续至少 20 秒确认适配器供电、未充电、三路读数 97%，保存上限 95%。本轮未安装或发布新版。
