@@ -8,6 +8,15 @@ if [[ -e "$destination" ]]; then
     exit 1
 fi
 codesign --verify --deep --strict Dist/Aidente.app
+release_build=${AIDENTE_RELEASE_BUILD:-0}
+volume_name='Aidente Test'
+if [[ "$release_build" == 1 ]]; then
+    # The same sealed app goes into the DMG and the updater ZIP.
+    codesign --verify --strict -R '=anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' Dist/Aidente.app
+    xcrun stapler validate Dist/Aidente.app
+    spctl --assess --type execute Dist/Aidente.app
+    volume_name='Aidente'
+fi
 app_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Dist/Aidente.app/Contents/Info.plist)
 [[ -n "$app_version" ]]
 staging_dir=$(mktemp -d /tmp/aidente-dmg.XXXXXX)
@@ -38,14 +47,21 @@ cat >> "$staging_dir/安装说明.txt" <<'TEXT'
 
 卸载：Aidente → 关于 → 完全卸载。先恢复充电默认，再移除后台服务及应用数据，App/历史移到废纸篓；恢复失败会停止卸载。下载包、源码和另存的诊断包不自动删除，不改动官方 AlDente。
 
-此包使用本机开发签名，未 Apple 公证。支持情况依 MacBook 型号与固件而异，不承诺全M系列硬件控制能力一致。完整校准和快捷指令宿主验收仍暂缓。
+支持情况依 MacBook 型号与固件而异。完整校准和快捷指令宿主验收仍暂缓。
 此为独立开源项目，与 AppHouseKitchen 无隶属关系。
 TEXT
-hdiutil create -volname 'Aidente Test' -srcfolder "$staging_dir" -format UDZO "$destination"
+if [[ "$release_build" != 1 ]]; then
+    print -r -- '此包为本地验证版本，尚未完成公开分发验收。' >> "$staging_dir/安装说明.txt"
+fi
+hdiutil create -volname "$volume_name" -srcfolder "$staging_dir" -format UDZO "$destination"
 hdiutil verify "$destination"
 hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "$destination"
 mounted=1
 codesign --verify --deep --strict "$mount_dir/Aidente.app"
+if [[ "$release_build" == 1 ]]; then
+    xcrun stapler validate "$mount_dir/Aidente.app"
+    spctl --assess --type execute "$mount_dir/Aidente.app"
+fi
 test "$(readlink "$mount_dir/Applications")" = /Applications
 cmp "$mount_dir/Aidente.app/Contents/Resources/install_local_control.sh" BuildSupport/install_local_control.sh
 hdiutil detach "$mount_dir"
