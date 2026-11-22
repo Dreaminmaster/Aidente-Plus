@@ -147,6 +147,23 @@ final class Registers: NativeChargeRegisters {
             displayed: 96, raw: 4241.0 / 4464 * 100, now: start.addingTimeInterval(290), capacity: (4241, 4464)),
             "A falling full-capacity estimate must not conceal exhaustion of the mAh budget")
         check(varyingFull.stopReason == .capacityBudget, "A stale display is not target completion")
+        var risingFull = DischargeSafetyPolicy()
+        check(!risingFull.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 4260.0 / 4460 * 100, now: start, capacity: (4260, 4460)),
+            "Capture a fixed scale for the observed M5 discharge")
+        check(!risingFull.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 4230.0 / 4478 * 100, now: start.addingTimeInterval(260), capacity: (4230, 4478)),
+            "An increased full-capacity estimate does not consume the 1-point budget")
+        check(risingFull.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 4214.0 / 4478 * 100, now: start.addingTimeInterval(320), capacity: (4214, 4478)),
+            "A real loss exceeding one point still stops the discharge")
+        var changingEstimate = DischargeSafetyPolicy()
+        _ = changingEstimate.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 4260.0 / 4460 * 100, now: start, capacity: (4260, 4460))
+        check(changingEstimate.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 4260.0 / 4480 * 100, now: start.addingTimeInterval(300), capacity: (4260, 4480))
+            && changingEstimate.stopReason == .stalled,
+            "A change in the full-capacity estimate alone does not renew the stall timer")
         var missingDisplay = DischargeSafetyPolicy()
         check(missingDisplay.mustStop(managed: true, dischargeRequested: true, target: 95,
             displayed: -1, raw: 96, now: start, capacity: (4320, 4500)),

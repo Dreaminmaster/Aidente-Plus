@@ -17,6 +17,7 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         var progressAt: Date?
         var startingCurrentMAh: Double?
         var startingFullMAh: Double?
+        var progressCurrentMAh: Double?
     }
     private var session: Session?
     private var blockedTarget: Int?
@@ -43,11 +44,24 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         if session?.target != target {
             session = Session(target: target, startingDisplay: displayed, startingRaw: raw,
                 lastDisplay: displayed, lastDisplayChange: now, progressRaw: raw, progressAt: now,
-                startingCurrentMAh: capacity?.current, startingFullMAh: capacity?.full)
+                startingCurrentMAh: capacity?.current, startingFullMAh: capacity?.full,
+                progressCurrentMAh: capacity?.current)
         }
         guard var active = session else { return false }
         let displayProgress = displayed < active.lastDisplay
-        let rawProgress = (active.progressRaw ?? active.startingRaw) - raw >= 0.25
+        let consumed: Double
+        let rawProgress: Bool
+        if let capacity, let startingCurrent = active.startingCurrentMAh,
+           let startingFull = active.startingFullMAh, startingFull > 0 {
+            // Firmware can revise the full-capacity estimate during a single
+            // discharge. Measure both usage and progress against a fixed scale.
+            let progressCurrent = active.progressCurrentMAh ?? startingCurrent
+            consumed = (startingCurrent - capacity.current) / startingFull * 100
+            rawProgress = (progressCurrent - capacity.current) / startingFull * 100 >= 0.25
+        } else {
+            consumed = active.startingRaw - raw
+            rawProgress = (active.progressRaw ?? active.startingRaw) - raw >= 0.25
+        }
         if displayProgress {
             active.lastDisplay = displayed
             active.lastDisplayChange = now
@@ -55,17 +69,10 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         if active.progressAt == nil || displayProgress || rawProgress {
             active.progressAt = now
             active.progressRaw = raw
+            active.progressCurrentMAh = capacity?.current
         }
         session = active
         let requestedDrop = Double(max(1, active.startingDisplay - target))
-        // A falling full-capacity estimate can conceal a drop in actual mAh.
-        // Keep the original ratio guard and also measure against the first full
-        // estimate, so either independent measure can exhaust the budget.
-        var consumed = active.startingRaw - raw
-        if let capacity, let startingCurrent = active.startingCurrentMAh,
-           let startingFull = active.startingFullMAh, startingFull > 0 {
-            consumed = max(consumed, (startingCurrent - capacity.current) / startingFull * 100)
-        }
         let exhaustedBudget = now.timeIntervalSince(active.lastDisplayChange) >= 120 && consumed >= requestedDrop
         let noProgress = now.timeIntervalSince(active.progressAt ?? now) >= 300
         if exhaustedBudget || noProgress {

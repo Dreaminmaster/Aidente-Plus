@@ -9,6 +9,11 @@ if [[ -e "$destination" ]]; then
 fi
 codesign --verify --deep --strict Dist/Aidente.app
 release_build=${AIDENTE_RELEASE_BUILD:-0}
+community_build=${AIDENTE_COMMUNITY_BUILD:-0}
+if [[ "$release_build" == 1 && "$community_build" == 1 ]]; then
+    print -u2 'Choose either notarized or development-signed distribution.'
+    exit 1
+fi
 volume_name='Aidente Test'
 if [[ "$release_build" == 1 ]]; then
     # The same sealed app goes into the DMG and the updater ZIP.
@@ -16,6 +21,9 @@ if [[ "$release_build" == 1 ]]; then
     xcrun stapler validate Dist/Aidente.app
     spctl --assess --type execute Dist/Aidente.app
     volume_name='Aidente'
+elif [[ "$community_build" == 1 ]]; then
+    codesign --verify --strict -R '=anchor apple generic' Dist/Aidente.app
+    volume_name='Aidente Community'
 fi
 app_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Dist/Aidente.app/Contents/Info.plist)
 [[ -n "$app_version" ]]
@@ -50,7 +58,9 @@ cat >> "$staging_dir/安装说明.txt" <<'TEXT'
 支持情况依 MacBook 型号与固件而异。完整校准和快捷指令宿主验收仍暂缓。
 此为独立开源项目，与 AppHouseKitchen 无隶属关系。
 TEXT
-if [[ "$release_build" != 1 ]]; then
+if [[ "$community_build" == 1 ]]; then
+    print -r -- '此为开发签名发行版，未通过 Apple 公证。下载后请核对发行页的 SHA-256。不同系统可能会阻止首次打开。' >> "$staging_dir/安装说明.txt"
+elif [[ "$release_build" != 1 ]]; then
     print -r -- '此包为本地验证版本，尚未完成公开分发验收。' >> "$staging_dir/安装说明.txt"
 fi
 hdiutil create -volname "$volume_name" -srcfolder "$staging_dir" -format UDZO "$destination"
