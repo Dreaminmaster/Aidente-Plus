@@ -159,10 +159,13 @@ class IOKitService {
         var batteryMetrics = BatteryMetrics()
         var adapterMetrics = AdapterMetrics()
 
-        let percentages = getBatteryPercentages(displayedPercent: displayedPercent)
+        let capacitySnapshot = SystemBatteryReading.registrySnapshot(service: batteryService)
+        let rawCapacity = SystemBatteryReading.rawCapacity(in: capacitySnapshot)
         batteryMetrics.batteryPercentage = displayedPercent
-        batteryMetrics.hardwareBatteryPercentage = percentages.hardware
-        batteryMetrics.hasHardwarePercentage = percentages.available
+        batteryMetrics.hardwareBatteryPercentage = rawCapacity.map {
+            Int(min(100, Double($0.current) / Double($0.full) * 100))
+        } ?? displayedPercent
+        batteryMetrics.hasHardwarePercentage = rawCapacity != nil
 
         batteryMetrics.isFullyCharged = getPropertyValue(batteryService, key: "FullyCharged") ?? false
         batteryMetrics.condition = powerInfo?[kIOPSBatteryHealthConditionKey] as? String ?? powerInfo?[kIOPSBatteryHealthKey] as? String ?? "—"
@@ -184,9 +187,11 @@ class IOKitService {
             batteryMetrics.timeRemaining = getTimeRemaining(powerInfo: powerInfo) ?? -1
         }
 
-        batteryMetrics.rawCurrentCapacityMilliampHours = getPropertyValue(batteryService, key: "AppleRawCurrentCapacity")
-        batteryMetrics.rawFullCapacityMilliampHours = getPropertyValue(batteryService, key: "AppleRawMaxCapacity")
+        batteryMetrics.rawCurrentCapacityMilliampHours = rawCapacity?.current
+        batteryMetrics.rawFullCapacityMilliampHours = rawCapacity?.full
         let capacities = getBatteryCapacities(
+            rawCapacity: rawCapacity,
+            snapshot: capacitySnapshot,
             displayedPercentage: batteryMetrics.batteryPercentage
         )
         batteryMetrics.currentCapacityMilliampHours = capacities.current
@@ -228,13 +233,6 @@ class IOKitService {
            let value = prop.takeRetainedValue() as? T { return value }
         let nested = IORegistryEntryCreateCFProperty(service, "BatteryData" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any]
         return nested?[key] as? T
-    }
-
-    private func getBatteryPercentages(displayedPercent: Int) -> (hardware: Int, available: Bool) {
-        guard let current: Int = getPropertyValue(batteryService, key: "AppleRawCurrentCapacity"),
-              let maximum: Int = getPropertyValue(batteryService, key: "AppleRawMaxCapacity"),
-              current >= 0, maximum > 0 else { return (displayedPercent, false) }
-        return (Int(min(100, Double(current) / Double(maximum) * 100)), true)
     }
 
     private func getTimeRemaining(powerInfo: [String: Any]?) -> Int? {
@@ -364,25 +362,25 @@ class IOKitService {
     }
 
     private func getBatteryCapacities(
+        rawCapacity: SystemBatteryReading.RawCapacity?,
+        snapshot: [String: Any]?,
         displayedPercentage: Int
     ) -> (current: Int, full: Int, design: Int) {
-        let rawCurrentCapacity: Int? = getPropertyValue(
-            batteryService,
-            key: "AppleRawCurrentCapacity"
-        )
+        let nested = snapshot?["BatteryData"] as? [String: Any]
+        func value(_ key: String) -> Int? {
+            (snapshot?[key] as? Int) ?? (nested?[key] as? Int)
+        }
         let fullCapacity: Int =
-            getPropertyValue(batteryService, key: "AppleRawMaxCapacity")
-            ?? getPropertyValue(batteryService, key: "NominalChargeCapacity")
-            ?? getPropertyValue(batteryService, key: "FullChargeCapacity")
+            rawCapacity?.full ?? value("AppleRawMaxCapacity")
+            ?? value("NominalChargeCapacity") ?? value("FullChargeCapacity")
             ?? 0
-        let designCapacity: Int =
-            getPropertyValue(batteryService, key: "DesignCapacity") ?? 0
+        let designCapacity = value("DesignCapacity") ?? 0
 
         let estimatedCurrentCapacity =
             fullCapacity > 0
-            ? Int((Double(fullCapacity) * Double(displayedPercentage) / 100).rounded())
+            ? Int(exactly: (Double(fullCapacity) * Double(displayedPercentage) / 100).rounded()) ?? 0
             : 0
-        let currentCapacity = rawCurrentCapacity ?? estimatedCurrentCapacity
+        let currentCapacity = rawCapacity?.current ?? value("AppleRawCurrentCapacity") ?? estimatedCurrentCapacity
 
         return (currentCapacity, fullCapacity, designCapacity)
     }

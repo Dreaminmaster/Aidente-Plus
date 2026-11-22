@@ -402,3 +402,9 @@ Apple 的限充说明给出的范围是目标附近几个百分点。AlDente 公
 Ampere 在 macOS 27 分别核对 PowerUI 配置和 powerd 的实际登记，Chargectl 也将原生限充与物理适配器控制视为两种不同能力。本机只读检查时，保存上限 95%，PowerUI 配置 97%，powerd 有两条重复的 97% 原生登记，两条都含允许放电标志。当时适配器供电、0 mA。这验证了允许放电的登记标志不能表示电池正在放电。参见 [Ampere 的核验](https://github.com/az-code-lab/ampere#health-check) 和 [Chargectl 的控制说明](https://github.com/tyldra-org/chargectl#how-it-works)。
 
 状态卡展开后分别读取系统限充配置与 powerd 的活动登记，重复的登记去重。诊断包保存登记电量、原因和允许放电标志，不记录登记所有者。系统没有登记与命令不可用分别显示，无法识别的输出不被解释成成功。6 项登记解析回归、本机实际登记读取、完整 App 类型检查及 13 项诊断归档检查通过。本轮没有开启主动放电、安装或发布。系统显示 95% 后自动停止仍待实机通过。
+
+### 2026-11-23：统一原始容量采样
+
+界面和后台各自从同一份 IORegistry 快照读取一对原始剩余容量与满充容量，兼容旧版字段及 macOS 27 的 `BatteryData.RemainingCapacity` / `FullChargeCapacity`。缺少有效原始容量时，放电进度仍可显示实测瓦数，容量减少量暂不显示。系统电量继续使用内部电池的 IOPS 读数。字段布局参见 [xbt-battery 的实机记录](https://github.com/XBTDMT/xbt-battery/blob/main/docs/MACOS-27.md#battery-keys-moved-into-nested-dictionaries)。
+
+App 和后台通过完整 Swift 类型检查，181 项充电检查、16273 项原生策略检查及 8 项原始容量检查通过。本机只读检查取得 4313 / 4469 mAh 和 97% 系统电量，当时已接电且未充电，保存上限为 95%。本轮未执行主动放电、安装或发布，仍待验证系统显示 95% 时能否自动结束放电。

@@ -6,19 +6,23 @@ public struct DischargeProgress: Equatable {
     private var target: Int?
     private var baseline: Int?
     private var lastDate: Date?
-    public private(set) var consumedMilliampHours = 0
+    public private(set) var consumedMilliampHours: Int?
     public private(set) var watts: Double?
     public init() {}
-    public mutating func update(requested: Bool, target: Int, capacity: Int,
+    public mutating func update(requested: Bool, target: Int, capacity: Int?,
                                 batteryPower: Double, date: Date?, now: Date) {
         guard requested else { self = Self(); return }
         if self.target != target { self = Self(); self.target = target }
         guard let date, now.timeIntervalSince(date) >= -1,
               now.timeIntervalSince(date) < 15,
-              capacity > 0, batteryPower.isFinite else { watts = nil; return }
+              batteryPower.isFinite else { watts = nil; return }
         guard date != lastDate else { return }
         lastDate = date
         watts = batteryPower
+        guard let capacity, capacity >= 0 else {
+            consumedMilliampHours = nil
+            return
+        }
         if baseline == nil { baseline = capacity }
         // A recharge or capacity-model correction must not inflate discharge
         // progress. A later session starts a new baseline.

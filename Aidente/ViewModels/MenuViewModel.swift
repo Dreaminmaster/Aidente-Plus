@@ -99,12 +99,13 @@ class MenuViewModel {
     var dischargeProgressText: String? {
         guard dischargeRequested, hasFreshPowerSample, let watts = dischargeProgress.watts, watts < -1, !isCharging else { return nil }
         let power = String(format: "%.1f", -watts)
-        let used = dischargeProgress.consumedMilliampHours
+        let measuredLoss = dischargeProgress.consumedMilliampHours.map {
+            AidenteL10n.t(" · 本次容量减少 \($0) mAh", " · capacity down \($0) mAh this session")
+        } ?? ""
         let hardware = hasHardwarePercentage
             ? AidenteL10n.t(" · 硬件容量换算\(hardwarePercentage)%", " · hardware-capacity ratio \(hardwarePercentage)%") : ""
-        return AidenteL10n.t("实测放电 \(power) W", "Measured discharge \(power) W") + hardware
-            + AidenteL10n.t(" · 本次容量减少 \(used) mAh。系统百分比可能暂未更新。",
-                " · capacity down \(used) mAh this session. The system percentage may update later.")
+        return AidenteL10n.t("实测放电 \(power) W", "Measured discharge \(power) W") + hardware + measuredLoss
+            + AidenteL10n.t("。系统百分比可能暂未更新。", ". The system percentage may update later.")
     }
     var dischargeRequested: Bool {
         if case .discharging = chargeManager.operationStatus { return true }
@@ -271,7 +272,7 @@ class MenuViewModel {
     private func updateFormattedValues(from metrics: BatteryMetrics, adapter: AdapterMetrics) {
         let percentage = metrics.batteryPercentage
         dischargeProgress.update(requested: dischargeRequested, target: Defaults[.chargeLimit],
-            capacity: metrics.currentCapacityMilliampHours, batteryPower: metrics.batteryPower,
+            capacity: metrics.rawCurrentCapacityMilliampHours, batteryPower: metrics.batteryPower,
             date: batteryService.lastPowerSampleDate, now: Date())
         hardwarePercentage = metrics.hardwareBatteryPercentage
         hasHardwarePercentage = metrics.hasHardwarePercentage

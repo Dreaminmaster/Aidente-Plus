@@ -185,7 +185,10 @@ final class SimulatedBattery: BatteryPowerControlling {
         progress.update(requested: true, target: 89, capacity: 4180, batteryPower: -10, date: now.addingTimeInterval(31), now: now.addingTimeInterval(31))
         check(progress.consumedMilliampHours == 0, "Changing the target starts a new progress baseline")
         progress.update(requested: false, target: 89, capacity: 4180, batteryPower: 0, date: now.addingTimeInterval(32), now: now.addingTimeInterval(32))
-        check(progress.watts == nil && progress.consumedMilliampHours == 0, "Ending discharge clears its progress")
+        check(progress.watts == nil && progress.consumedMilliampHours == nil, "Ending discharge clears its progress")
+        progress.update(requested: true, target: 89, capacity: nil, batteryPower: -10, date: now, now: now)
+        check(progress.watts == -10 && progress.consumedMilliampHours == nil,
+              "Measured power is still visible when raw capacity is missing")
         var resumeFlow = ChargeResumeVerification()
         check(resumeFlow.sample(percentage: 90, target: 95, batteryPower: 0, isCharging: false) == .pending, "A resume request is not proof of charging")
         _ = resumeFlow.sample(percentage: 90, target: 95, batteryPower: 0, isCharging: false)

@@ -15,6 +15,28 @@ import IOKit.ps
         precondition(SystemBatteryReading.percentage(current: 0, maximum: 100) == 0)
         precondition(SystemBatteryReading.percentage(current: 96, maximum: 0) == nil)
         precondition(SystemBatteryReading.percentage(current: .nan, maximum: 100) == nil)
+        let rawCurrent = "AppleRawCurrentCapacity"
+        let rawFull = "AppleRawMaxCapacity"
+        let older = SystemBatteryReading.rawCapacity(in: [rawCurrent: 4260, rawFull: 4460])
+        precondition(older?.current == 4260 && older?.full == 4460)
+        let nested = SystemBatteryReading.rawCapacity(in: [
+            rawCurrent: 4250,
+            "BatteryData": [rawCurrent: 4230, rawFull: 4478]
+        ])
+        precondition(nested?.current == 4230 && nested?.full == 4478)
+        let split = SystemBatteryReading.rawCapacity(in: [
+            rawCurrent: 4223,
+            "BatteryData": [rawFull: 4468]
+        ])
+        precondition(split?.current == 4223 && split?.full == 4468)
+        let aliases = SystemBatteryReading.rawCapacity(in: [
+            "BatteryData": ["RemainingCapacity": 4197, "FullChargeCapacity": 4468]
+        ])
+        precondition(aliases?.current == 4197 && aliases?.full == 4468)
+        precondition(SystemBatteryReading.rawCapacity(in: [rawCurrent: true, rawFull: 100]) == nil)
+        precondition(SystemBatteryReading.rawCapacity(in: [rawCurrent: 100, rawFull: 0]) == nil)
+        precondition(SystemBatteryReading.rawCapacity(in: [rawCurrent: 0, rawFull: 4468])?.current == 0)
+        precondition(SystemBatteryReading.rawCapacity(in: ["CurrentCapacity": 97, "MaxCapacity": 100]) == nil)
         let registered = NativeChargeRegistration.parse("""
             Battery level limits:
             (
@@ -45,6 +67,10 @@ import IOKit.ps
         }
         print("7 native read-only checks passed; limits=\(limits), state=\(original)")
         print("8 internal battery selection and percentage checks passed")
+        let battery = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        defer { if battery != 0 { IOObjectRelease(battery) } }
+        let liveCapacity = SystemBatteryReading.rawCapacity(in: SystemBatteryReading.registrySnapshot(service: battery))
+        print("8 raw capacity pair checks passed; live current/full=\(String(describing: liveCapacity))")
         print("6 active registration checks passed; live registration=\(String(describing: NativeChargeRegistration.read()?.map(\.percentage)))")
     }
 }

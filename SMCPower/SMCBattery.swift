@@ -133,16 +133,10 @@ public struct SMCBattery: Sendable, BatteryPowerControlling {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         guard service != 0 else { throw SMCBatteryError.unsupportedCapability }
         defer { IOObjectRelease(service) }
-        func number(_ key: String) -> Double? {
-            if let value = (IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber)?.doubleValue { return value }
-            let nested = IORegistryEntryCreateCFProperty(service, "BatteryData" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any]
-            return (nested?[key] as? NSNumber)?.doubleValue
-        }
-        guard let current = number("AppleRawCurrentCapacity"), let full = number("AppleRawMaxCapacity"),
-              full.isFinite, current.isFinite, full > 0, current >= 0 else {
+        guard let capacity = SystemBatteryReading.rawCapacity(in: SystemBatteryReading.registrySnapshot(service: service)) else {
             throw SMCBatteryError.unsupportedCapability
         }
-        return (current, full)
+        return (Double(capacity.current), Double(capacity.full))
     }
 
     public static func macOSPercentage() throws -> Int {
@@ -154,11 +148,10 @@ public struct SMCBattery: Sendable, BatteryPowerControlling {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         guard service != 0 else { throw SMCBatteryError.unsupportedCapability }
         defer { IOObjectRelease(service) }
-        func number(_ key: String) -> Double? {
-            (IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber)?.doubleValue
-        }
-        guard let current = number("CurrentCapacity"), let maximum = number("MaxCapacity"),
-              let percentage = SystemBatteryReading.percentage(current: current, maximum: maximum) else {
+        let snapshot = SystemBatteryReading.registrySnapshot(service: service)
+        guard let current = snapshot?["CurrentCapacity"] as? NSNumber,
+              let maximum = snapshot?["MaxCapacity"] as? NSNumber,
+              let percentage = SystemBatteryReading.percentage(current: current.doubleValue, maximum: maximum.doubleValue) else {
             throw SMCBatteryError.unsupportedCapability
         }
         return percentage
