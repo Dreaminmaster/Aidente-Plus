@@ -3,12 +3,18 @@ import SMCKit
 import smc_power
 
 do {
-    let keys: [FourCharCode] = ["CH0B", "CH0C", "CHTE", "CH0I", "CHIE", "bfF0", "bfD0", "bfE0"]
+    let keys: [FourCharCode] = [
+        "CH0B", "CH0C", "CHTE", "CH0I", "CHIE", "CHLS", "CHWA",
+        "bfF0", "bfD0", "bfE0", "BUIC", "BRSC", "SBAS", "B0RM", "B0FC"
+    ]
+    let reportBytes: Set<String> = [
+        "CHLS", "CHWA", "bfF0", "bfD0", "bfE0", "BUIC", "BRSC", "SBAS", "B0RM", "B0FC"
+    ]
     for key in keys {
         do {
             let info = try SMCKit.shared.getKeyInformation(key)
             print("key=\(key.toString()) type=\(info.type.toString()) size=\(info.size)")
-            if ["bfF0", "bfD0", "bfE0"].contains(key.toString()) {
+            if reportBytes.contains(key.toString()) {
                 print("value=\(try SMCKit.shared.readData(key).map { String(format: "%02x", $0) }.joined())")
             }
         } catch {
