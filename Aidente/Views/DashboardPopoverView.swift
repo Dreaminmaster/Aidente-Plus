@@ -7,10 +7,34 @@ import AidenteShared
     static let shared = PopoverEditorState()
     var isEditing = false
     var isAddingWidget = false
-    var isTrackingNativeMenu = false
+    private var trackedMenu: NSMenu?
+    private var lastMenuTrackingInterval: ClosedRange<TimeInterval>?
+    var isTrackingNativeMenu: Bool { trackedMenu != nil }
     var requestOpen: (() -> Void)?
     var updateSize: (() -> Void)?
     func beginEditing() { isEditing = true; requestOpen?() }
+
+    func track(_ menu: NSMenu, at point: NSPoint, in anchor: NSView) {
+        guard trackedMenu == nil else { return }
+        let started = ProcessInfo.processInfo.systemUptime
+        trackedMenu = menu
+        defer {
+            lastMenuTrackingInterval = started...ProcessInfo.processInfo.systemUptime
+            trackedMenu = nil
+        }
+        menu.popUp(positioning: nil, at: point, in: anchor)
+    }
+
+    func consumeMenuEscape(_ event: NSEvent?) -> Bool {
+        if let trackedMenu {
+            trackedMenu.cancelTracking()
+            return true
+        }
+        // AppKit can forward the same key to the panel after the menu exits.
+        // A fresh Esc must still close the parent panel.
+        guard let event, event.type == .keyDown, event.keyCode == 53 else { return false }
+        return lastMenuTrackingInterval?.contains(event.timestamp) == true
+    }
 }
 
 @MainActor enum PopoverLayout {
@@ -622,9 +646,7 @@ private struct DashboardMenuButton: NSViewRepresentable {
                 x: max(screen.minX + 6, anchor.maxX - menu.size.width),
                 y: opensAbove ? min(screen.maxY - 3, upperY) : anchor.minY - 3
             )
-            editor.isTrackingNativeMenu = true
-            menu.popUp(positioning: nil, at: button.convert(window.convertPoint(fromScreen: screenPoint), from: nil), in: button)
-            editor.isTrackingNativeMenu = false
+            editor.track(menu, at: button.convert(window.convertPoint(fromScreen: screenPoint), from: nil), in: button)
         }
     }
 }

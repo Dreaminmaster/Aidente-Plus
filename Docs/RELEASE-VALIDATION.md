@@ -324,3 +324,9 @@ Build 43 已通过 macOS 钥匙串签名及后台服务更新授权，安装版�
 - 本机通过实际暂停和恢复，各连续六次读取 0 mA。测试前后保存上限 95%，系统保持点和显示电量 96%，管理开启、自动放电关闭。此项覆盖 URL 入口与共用控制逻辑。
 - 普通开发包重新验证校验和与嵌套签名，Gatekeeper 拒绝该分发构建。打包脚本的 `AIDENTE_RELEASE_BUILD=1` 使用与构建脚本相同的 Developer ID Application 要求，并检查 App 的公证票据和 Gatekeeper 结果。本机开发包被公开打包模式正确拒绝，本地打包模式成功，测试产物已清理。公证成功路径需具备 Developer ID 和票据。参见 [Apple 公证要求](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)。
 - 发布仍缺本机精确放电到 95% 的通过证据、M5 Pro 等机型实测，以及公开分发所需的签名与公证。本机签名身份清单中无可用 Developer ID Application。未创建 GitHub 公开发行。
+
+## 6.2.20 Build 44：全屏菜单分级关闭
+
+原生子菜单跟踪期间，Esc 先交给子菜单。若 AppKit 在跟踪结束后将同一次键盘事件转发到父窗口，记录的事件时间用于识别并忽略这次重复投递。再次独立按 Esc 可以关闭父面板。
+
+在实际的文本编辑全屏空间用只读预览复测。日志确认 Aidente 面板在当前活跃空间可见。两次打开“更多”均成功，按 Esc 后仅子菜单消失且面板还在。随后独立按 Esc 关闭面板。已关闭本轮空白文稿和预览。构建、179 项充电、16262 项原生策略、152 项功能策略及状态事件回归通过。

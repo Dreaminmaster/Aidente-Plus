@@ -471,7 +471,9 @@ private final class StatusPopoverPanel: NSPanel {
     var onEscape: (() -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-    override func cancelOperation(_ sender: Any?) { onEscape?() }
+    override func cancelOperation(_ sender: Any?) {
+        if !PopoverEditorState.shared.consumeMenuEscape(NSApp.currentEvent) { onEscape?() }
+    }
 }
 
 /// The nonactivating panel owns its backdrop. The hosted SwiftUI view is kept
