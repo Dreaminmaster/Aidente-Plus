@@ -169,7 +169,15 @@ class IOKitService {
         let full = batteryMetrics.isFullyCharged && batteryMetrics.batteryPercentage >= 100
         if full && !observedFull && !CompleteUninstaller.shared.isRunning { Defaults[.lastObservedFullCharge] = Date().timeIntervalSince1970 }
         observedFull = full
-        batteryMetrics.isCharging = powerInfo?[kIOPSIsChargingKey] as? Bool ?? false
+        let registryConnection: Bool? = getPropertyValue(batteryService, key: "ExternalConnected")
+        let systemPowerSource = powerInfo?[kIOPSPowerSourceStateKey] as? String
+        let registryCharging: Bool? = getPropertyValue(batteryService, key: "IsCharging")
+        let connection = PowerConnectionSnapshot.resolve(
+            externalConnected: registryConnection,
+            providingAC: systemPowerSource.map { $0 == kIOPSACPowerValue } ?? lastConnection?.connected ?? false,
+            charging: (powerInfo?[kIOPSIsChargingKey] as? Bool) ?? registryCharging ?? false
+        )
+        batteryMetrics.isCharging = connection.charging
         if batteryMetrics.isCharging {
             batteryMetrics.timeRemaining = getTimeToFull(powerInfo: powerInfo) ?? -1
         } else {
@@ -189,8 +197,7 @@ class IOKitService {
             ? Double(capacities.full) * 100 / Double(capacities.design)
             : 0
 
-        batteryMetrics.externalConnected =
-            getPropertyValue(batteryService, key: "ExternalConnected") ?? false
+        batteryMetrics.externalConnected = connection.connected
 
         let adapterSpecification = getAdapterSpecification()
         let adapterDetails = (IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() as? [String: Any]) ?? getRegistryAdapterDetails() ?? [:]
