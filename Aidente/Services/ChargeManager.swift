@@ -832,6 +832,9 @@ class ChargeManager {
                     continue
                 }
                 lastSample = sampleDate
+                // PowerUI accepts the limit before the power controller
+                // finishes changing direction. Keep the measured flow visible.
+                let settlingNativeLimit = usesNativeChargeLimit && Date().timeIntervalSince(started) < 180
                 if request.charging {
                     let outcome = resumeVerification.sample(percentage: batteryService.metrics.batteryPercentage,
                         target: request.chargeCeiling, batteryPower: batteryService.metrics.batteryPower,
@@ -858,7 +861,7 @@ class ChargeManager {
                     case .pending: break
                     case .discharging: powerFlowError = nil
                     case .held, .charging:
-                        powerFlowError = AidenteL10n.t(
+                        powerFlowError = settlingNativeLimit ? nil : AidenteL10n.t(
                             outcome == .charging
                                 ? "已请求放电，但电池仍在充电。系统尚未执行放电；请检查系统校准状态或停止后重试。"
                                 : "已请求放电，但电池仍在保持电量。系统尚未执行主动放电，不能视为已经生效。",
@@ -868,9 +871,6 @@ class ChargeManager {
                     }
                     continue
                 }
-                // PowerUI can accept a hold while the battery is still settling.
-                // Keep reporting measured power during that transition.
-                let settlingNativeHold = usesNativeChargeLimit && Date().timeIntervalSince(started) < 180
                 switch verification.sample(batteryPower: batteryService.metrics.batteryPower, isCharging: batteryService.metrics.isCharging) {
                 case .pending: if !preserveVerifiedHold || !batteryService.metrics.batteryPower.isFinite { powerHoldVerified = false }
                 case .held:
@@ -879,13 +879,13 @@ class ChargeManager {
                     sendChargingStateNotification(charging: false, reason: nil)
                 case .charging:
                     powerHoldVerified = false
-                    powerFlowError = settlingNativeHold ? nil : AidenteL10n.t(
+                    powerFlowError = settlingNativeLimit ? nil : AidenteL10n.t(
                         "已请求暂停，但电池仍持续充电；尚未实现限充保持。",
                         "Charging hold requested, but the battery is still charging."
                     )
                 case .discharging:
                     powerHoldVerified = false
-                    powerFlowError = settlingNativeHold ? nil : AidenteL10n.t(
+                    powerFlowError = settlingNativeLimit ? nil : AidenteL10n.t(
                         "已请求暂停且适配器已连接，但电池仍持续放电。可能受固件或适配器供电能力限制，尚未实现适配器供电保持。",
                         "Hold requested with AC connected, but the battery is still discharging. Firmware or adapter capacity may prevent an AC-powered hold."
                     )
