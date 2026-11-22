@@ -386,3 +386,9 @@ Build 46 已安装且后台健康检查通过。签名使用现有 Apple Develop
 本机处于适配器供电、0 mA，macOS 电量显示 97%。以普通用户和经 macOS 系统授权的管理员身份分别运行同一个只读诊断。直接从 SMC 读出的 BUIC、BRSC 和 SBAS 都为 97%，与 IOPS、IORegistry 的整数读数一致。SMC 的 B0RM 和 B0FC 分别为 4309、4465 mAh，也与 IORegistry 的原始容量一致，容量比约 96.51%。本轮只检查稳态读数，未执行另一轮充放电。
 
 Linux Apple Silicon 电源驱动所检查的 CHWA 在本机不存在，CHLS 在当前 macOS 上对管理员也返回权限不足。项目已知的其他限充寄存器 bfF0、bfD0、bfE0 对管理员同样返回权限不足。未尝试写入或更改系统保护。此次结果没有找到可替换 macOS 电量显示的独立有效百分比读数，也没有验证额外的可用硬件限充接口。系统显示 95% 的验收条件仍未通过；保持现有已安装版本与公开发行。参考 [Linux Apple Silicon 电源驱动](https://github.com/torvalds/linux/blob/master/drivers/power/supply/macsmc-power.c) 及 [Asahi Linux SMC 文档](https://asahilinux.org/docs/hw/soc/smc/)。
+
+### 2026-11-23：跨项目核对与原生放电核验
+
+Apple 的限充说明给出的范围是目标附近几个百分点。AlDente 公开说明使用 macOS 百分比作为放电目标，原始容量比例单独用于显示。Chargectl 在 80% 以上同样使用 macOS 原生限充。Ampere 在个别设备上实测原生放电启动可延迟数分钟，xbt-battery 则记录了 macOS 27 的充电标志滞后。这些是各项目实测记录，未将其他机型结果当成本机通过证据。本机检查了 PowerUIAgent 和 powerd 日志，未找到本轮由系统校准接管的证据。参考 [Apple](https://support.apple.com/en-us/102338)、[AlDente](https://apphousekitchen.com/aldente-overview/features/)、[Chargectl](https://github.com/tyldra-org/chargectl#how-it-works)、[Ampere](https://github.com/az-code-lab/ampere#firmware-without-chte-macos-27) 和 [xbt-battery](https://github.com/XBTDMT/xbt-battery/blob/main/docs/MACOS-27.md)。
+
+充电、保持及放电核验改用同一个实测功率判断。系统充电标志和功率矛盾时保持待确认，冲突会清空连续采样计数。只在原生请求有有效电流读数、尚未观察到实际放电或其他进展时，允许后台最多等待八分钟启动。开始后仍使用五分钟无进展保护，实际容量失去过多也会照常停止。App 和后台完整类型检查、180 项充电、16273 项原生策略及 152 项功能回归通过。

@@ -142,8 +142,15 @@ public struct ChargeHoldVerification {
     private var count = 0
     public init() {}
     public mutating func sample(batteryPower: Double, isCharging: Bool = false) -> Result {
-        guard batteryPower.isFinite else { self = Self(); return .pending }
-        let state: Result = isCharging || batteryPower > 1 ? .charging : batteryPower < -1 ? .discharging : .held
+        let state: Result
+        switch ObservedBatteryFlow.resolve(reportsCharging: isCharging, watts: batteryPower, fresh: true) {
+        case .unconfirmed:
+            self = Self()
+            return .pending
+        case .held: state = .held
+        case .charging: state = .charging
+        case .discharging: state = .discharging
+        }
         count = state == last ? count + 1 : 1
         last = state
         return count >= 3 ? state : .pending

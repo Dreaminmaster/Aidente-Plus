@@ -734,7 +734,7 @@ class ChargeManager {
                         case .capacityBudget:
                             explanation = AidenteL10n.t("原始容量已达到安全放电预算，系统电量尚未到点。", "Raw capacity reached the safety budget before the displayed charge reached the target.")
                         case .stalled:
-                            explanation = AidenteL10n.t("连续五分钟未检测到足够的放电进展。", "There was no meaningful discharge progress for five minutes.")
+                            explanation = AidenteL10n.t("在限定时间内未检测到持续放电或足够的放电进展。", "Discharge did not begin or make enough progress within the allowed time.")
                         case .invalidReading:
                             explanation = AidenteL10n.t("未取得可用于安全放电的电池读数。", "Battery readings needed for safe discharge were unavailable.")
                         case .previousStop, nil:
@@ -797,6 +797,7 @@ class ChargeManager {
             var verification = ChargeHoldVerification()
             var resumeVerification = ChargeResumeVerification()
             var lastSample: Date?
+            var dischargeWasVerified = false
             let started = Date()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(8)) } catch { return }
@@ -857,11 +858,14 @@ class ChargeManager {
                     let outcome = verification.sample(batteryPower: batteryService.metrics.batteryPower,
                         isCharging: batteryService.metrics.isCharging)
                     powerDischargeVerified = outcome == .discharging
+                    dischargeWasVerified = dischargeWasVerified || powerDischargeVerified
+                    let waitingForNativeStart = usesNativeChargeLimit && !dischargeWasVerified
+                        && Date().timeIntervalSince(started) < DischargeSafetyPolicy.nativeStartGrace
                     switch outcome {
-                    case .pending: break
+                    case .pending: powerFlowError = nil
                     case .discharging: powerFlowError = nil
                     case .held, .charging:
-                        powerFlowError = settlingNativeLimit ? nil : AidenteL10n.t(
+                        powerFlowError = waitingForNativeStart ? nil : AidenteL10n.t(
                             outcome == .charging
                                 ? "已请求放电，但电池仍在充电。系统尚未执行放电；请检查系统校准状态或停止后重试。"
                                 : "已请求放电，但电池仍在保持电量。系统尚未执行主动放电，不能视为已经生效。",
@@ -872,7 +876,9 @@ class ChargeManager {
                     continue
                 }
                 switch verification.sample(batteryPower: batteryService.metrics.batteryPower, isCharging: batteryService.metrics.isCharging) {
-                case .pending: if !preserveVerifiedHold || !batteryService.metrics.batteryPower.isFinite { powerHoldVerified = false }
+                case .pending:
+                    powerFlowError = nil
+                    if !preserveVerifiedHold || !batteryService.metrics.batteryPower.isFinite { powerHoldVerified = false }
                 case .held:
                     powerHoldVerified = true
                     powerFlowError = nil

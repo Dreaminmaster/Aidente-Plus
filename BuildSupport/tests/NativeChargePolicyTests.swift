@@ -169,6 +169,34 @@ final class Registers: NativeChargeRegisters {
             displayed: -1, raw: 96, now: start, capacity: (4320, 4500)),
             "Missing macOS percentage stops a discharge even when raw capacity is available")
         check(missingDisplay.stopReason == .invalidReading, "An unreadable display is logged as invalid telemetry")
+        var waitingForFirmware = DischargeSafetyPolicy()
+        check(!waitingForFirmware.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 97, now: start, nativeCurrentAmps: 0),
+            "A native discharge can await the first negative sample")
+        check(!waitingForFirmware.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 97, now: start.addingTimeInterval(400), nativeCurrentAmps: 0),
+            "A native request may start after five minutes at zero current")
+        var neverStarted = waitingForFirmware
+        check(neverStarted.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 97, now: start.addingTimeInterval(480), nativeCurrentAmps: 0)
+            && neverStarted.stopReason == .stalled, "Waiting for firmware is bounded")
+        var missingCurrent = waitingForFirmware
+        check(missingCurrent.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 97, now: start.addingTimeInterval(401), nativeCurrentAmps: nil),
+            "Unknown current cannot extend the ordinary stall limit")
+        check(!waitingForFirmware.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 97, now: start.addingTimeInterval(420), nativeCurrentAmps: -0.4),
+            "The stall timer starts again once negative current is observed")
+        check(waitingForFirmware.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 97, now: start.addingTimeInterval(720), nativeCurrentAmps: 0),
+            "A started discharge cannot re-enter the firmware startup allowance")
+        var capacityDropsWhileWaiting = DischargeSafetyPolicy()
+        _ = capacityDropsWhileWaiting.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 97, now: start, nativeCurrentAmps: 0)
+        check(capacityDropsWhileWaiting.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 97, raw: 94.9, now: start.addingTimeInterval(180), nativeCurrentAmps: 0)
+            && capacityDropsWhileWaiting.stopReason == .capacityBudget,
+            "The startup allowance does not extend the measured capacity budget")
         print("PASS: \(count) native policy, sleep, discharge intent, delayed readback and rollback checks (no hardware writes)")
     }
 }

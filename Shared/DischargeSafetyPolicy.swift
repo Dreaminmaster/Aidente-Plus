@@ -3,6 +3,7 @@ import Foundation
 /// A stale user-visible gauge must not turn a bounded discharge into an
 /// unbounded wait. Raw capacity is a safety budget, not a substitute UI percent.
 public struct DischargeSafetyPolicy: Codable, Equatable {
+    public static let nativeStartGrace: TimeInterval = 8 * 60
     public enum StopReason: String, Codable {
         case invalidReading, capacityBudget, stalled, previousStop
     }
@@ -18,6 +19,7 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         var startingCurrentMAh: Double?
         var startingFullMAh: Double?
         var progressCurrentMAh: Double?
+        var waitingForCurrentSince: Date?
     }
     private var session: Session?
     private var blockedTarget: Int?
@@ -28,7 +30,8 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
     /// True means stop and restore the captured system policy, never "complete".
     public mutating func mustStop(managed: Bool, dischargeRequested: Bool, target: Int,
                                   displayed: Int, raw: Double, now: Date,
-                                  capacity: (current: Double, full: Double)? = nil) -> Bool {
+                                  capacity: (current: Double, full: Double)? = nil,
+                                  nativeCurrentAmps: Double? = nil) -> Bool {
         guard managed && dischargeRequested else { reset(); return false }
         if blockedTarget == target {
             if stopReason == nil { stopReason = .previousStop }
@@ -41,11 +44,13 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
             return true
         }
         guard displayed > target else { reset(); return false }
+        let current = nativeCurrentAmps.flatMap { $0.isFinite ? $0 : nil }
         if session?.target != target {
             session = Session(target: target, startingDisplay: displayed, startingRaw: raw,
                 lastDisplay: displayed, lastDisplayChange: now, progressRaw: raw, progressAt: now,
                 startingCurrentMAh: capacity?.current, startingFullMAh: capacity?.full,
-                progressCurrentMAh: capacity?.current)
+                progressCurrentMAh: capacity?.current,
+                waitingForCurrentSince: current.map { $0 >= -0.08 } == true ? now : nil)
         }
         guard var active = session else { return false }
         let displayProgress = displayed < active.lastDisplay
@@ -71,10 +76,24 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
             active.progressRaw = raw
             active.progressCurrentMAh = capacity?.current
         }
+        // Native firmware may delay the start. Give it this window only
+        // before negative current or independent progress is observed.
+        if let requestTime = active.waitingForCurrentSince {
+            let elapsed = now.timeIntervalSince(requestTime)
+            let started = current.map { $0 < -0.08 } == true || displayProgress || rawProgress
+            if elapsed < Self.nativeStartGrace && (started || current == nil) {
+                if started { active.progressAt = now }
+                active.waitingForCurrentSince = nil
+            }
+        }
         session = active
         let requestedDrop = Double(max(1, active.startingDisplay - target))
         let exhaustedBudget = now.timeIntervalSince(active.lastDisplayChange) >= 120 && consumed >= requestedDrop
-        let noProgress = now.timeIntervalSince(active.progressAt ?? now) >= 300
+        let noProgress = if let requestTime = active.waitingForCurrentSince {
+            now.timeIntervalSince(requestTime) >= Self.nativeStartGrace
+        } else {
+            now.timeIntervalSince(active.progressAt ?? now) >= 300
+        }
         if exhaustedBudget || noProgress {
             blockedTarget = target
             stopReason = exhaustedBudget ? .capacityBudget : .stalled

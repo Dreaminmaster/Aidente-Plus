@@ -9,10 +9,7 @@ public struct ChargeResumeVerification {
     public mutating func sample(percentage: Int, target: Int, batteryPower: Double, isCharging: Bool) -> Result {
         guard (0...100).contains(percentage), (1...100).contains(target) else { flow = .init(); return .pending }
         if percentage >= target { flow = .init(); return .targetReached }
-        // A charging flag alone cannot confirm resumed input power. Treat a
-        // flag-only or contradictory reading as a pending sample.
-        let observed = ObservedBatteryFlow.resolve(reportsCharging: isCharging, watts: batteryPower, fresh: true)
-        switch flow.sample(batteryPower: observed == .unconfirmed ? .nan : batteryPower) {
+        switch flow.sample(batteryPower: batteryPower, isCharging: isCharging) {
         case .pending: return .pending
         case .charging: return .charging
         case .held: return .notCharging
