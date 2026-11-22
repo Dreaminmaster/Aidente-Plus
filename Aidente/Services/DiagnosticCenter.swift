@@ -340,7 +340,7 @@ final class DiagnosticCenter {
 
     private nonisolated static func readNativeChargeReport() async -> String {
         await Task.detached(priority: .utility) {
-            let report: [String: Any]
+            var report: [String: Any]
             do {
                 let state = try NativeChargeLimit().read()
                 report = ["available": true, "limit": state.limit, "enabled": state.enabled,
@@ -348,6 +348,17 @@ final class DiagnosticCenter {
             } catch {
                 report = ["available": false, "readOnly": true,
                     "error": Self.sanitize(error.localizedDescription)]
+            }
+            if let registrations = NativeChargeRegistration.read() {
+                report["registrationAvailable"] = true
+                report["activeRegistrations"] = registrations.map { entry -> [String: Any] in
+                    var fields: [String: Any] = ["percentage": entry.percentage]
+                    if let reason = entry.reason { fields["reason"] = reason }
+                    if let allowsDrain = entry.allowsDrain { fields["allowsDrain"] = allowsDrain }
+                    return fields
+                }
+            } else {
+                report["registrationAvailable"] = false
             }
             let data = (try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])) ?? Data()
             return String(decoding: data, as: UTF8.self)

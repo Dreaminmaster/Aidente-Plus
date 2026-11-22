@@ -4,7 +4,7 @@ set -euo pipefail
 project_dir=${0:A:h:h}
 cd "$project_dir"
 mkdir -p Build
-swiftc -parse-as-library SMCPower/NativeChargeLimit.swift SMCPower/SystemBatteryReading.swift \
+swiftc -parse-as-library SMCPower/NativeChargeLimit.swift SMCPower/NativeChargeRegistration.swift SMCPower/SystemBatteryReading.swift \
     BuildSupport/tests/NativeChargeLimitReadOnlyTests.swift \
     -o Build/NativeChargeLimitReadOnlyTests
 Build/NativeChargeLimitReadOnlyTests

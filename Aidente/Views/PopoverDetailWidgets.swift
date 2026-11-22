@@ -161,15 +161,24 @@ struct PopoverStatusExplanation: View {
                 guard showSystemHoldingPoint else { return }
                 systemHoldingPoint = nil
                 while !Task.isCancelled {
-                    let state = await Task.detached(priority: .utility) { try? NativeChargeLimit().read() }.value
+                    let (state, registrations) = await Task.detached(priority: .utility) {
+                        (try? NativeChargeLimit().read(), NativeChargeRegistration.read())
+                    }.value
                     guard !Task.isCancelled else { return }
-                    if let state, state.enabled {
-                        systemHoldingPoint = AidenteL10n.t("系统登记 \(state.limit)%。实际是否充电请看上方状态。",
-                            "macOS reports \(state.limit)%. See the status above for actual charging.")
-                    } else if state != nil {
-                        systemHoldingPoint = AidenteL10n.t("系统限充未启用。", "The system charge limit is off.")
+                    let current: String
+                    if let registrations {
+                        let levels = Set(registrations.map(\.percentage)).sorted().map { "\($0)%" }.joined(separator: "、")
+                        current = levels.isEmpty ? AidenteL10n.t("系统当前没有生效的限充登记。", "No active limit is registered with macOS.")
+                            : AidenteL10n.t("系统当前登记 \(levels)。", "Active macOS registration: \(levels).")
                     } else {
-                        systemHoldingPoint = AidenteL10n.t("此机型或当前系统状态暂时无法读回。", "Readback is unavailable for this Mac or system state.")
+                        current = AidenteL10n.t("暂时无法读取系统登记值。", "Active macOS registration is unavailable.")
+                    }
+                    if let state, state.enabled {
+                        systemHoldingPoint = AidenteL10n.t("系统限充配置 \(state.limit)%。", "macOS limit setting: \(state.limit)%.") + "\n" + current
+                    } else if state != nil {
+                        systemHoldingPoint = AidenteL10n.t("系统限充配置为关闭。", "The macOS limit setting is off.") + "\n" + current
+                    } else {
+                        systemHoldingPoint = current
                     }
                     do { try await Task.sleep(for: .seconds(5)) } catch { return }
                 }
