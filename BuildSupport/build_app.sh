@@ -13,11 +13,28 @@ sdk=$(xcrun --sdk macosx --show-sdk-path)
 target="arm64-apple-macosx14.0"
 signing_identity="${AIDENTE_SIGNING_IDENTITY:--}"
 signing_options=(--timestamp=none)
-if [[ "$signing_identity" == "-" ]]; then
-    if [[ "${AIDENTE_RELEASE_BUILD:-0}" == "1" ]]; then
-        print -u2 "Release build requires AIDENTE_SIGNING_IDENTITY (Developer ID Application)."
+release_build=${AIDENTE_RELEASE_BUILD:-0}
+if [[ "$release_build" == "1" ]]; then
+    if ! developer_id=$(security find-identity -v -p codesigning | awk -v requested="$signing_identity" '
+        $2 ~ /^[[:xdigit:]]+$/ && length($2) == 40 {
+            name = $0
+            sub(/^[^"]*"/, "", name)
+            sub(/".*$/, "", name)
+            if (name ~ /^Developer ID Application: / &&
+                (toupper(requested) == $2 || requested == name)) {
+                hash = $2
+                matches++
+            }
+        }
+        END { if (matches == 1) print hash; else exit 1 }
+    '); then
+        print -u2 "Release build requires the exact name or SHA-1 of one valid Developer ID Application identity in AIDENTE_SIGNING_IDENTITY."
         exit 1
     fi
+    signing_identity=$developer_id
+fi
+
+if [[ "$signing_identity" == "-" ]]; then
     print -u2 "Administrator-install build: ad-hoc integrity signing; no Apple notarization."
 else
     if ! security find-identity -v -p codesigning | grep -F -- "$signing_identity" >/dev/null; then
@@ -258,8 +275,12 @@ codesign \
     "$app_dir"
 
 codesign --verify --deep --strict --verbose=2 "$app_dir"
-if [[ "${AIDENTE_RELEASE_BUILD:-0}" == "1" ]]; then
-    for signed_component in "$app_dir" "$app_dir/Contents/MacOS/AidenteControl"; do
+if [[ "$release_build" == "1" ]]; then
+    for signed_component in "$app_dir" \
+        "$reader_dir" \
+        "$app_dir/Contents/Resources/AidenteUpdater" \
+        "$app_dir/Contents/MacOS/AidenteControl" \
+        "$app_dir/Contents/Library/LaunchDaemons/AidenteControl"; do
         codesign --verify --strict -R '=anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' "$signed_component"
     done
 fi

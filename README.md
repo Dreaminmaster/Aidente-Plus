@@ -62,7 +62,9 @@ zsh script/package_dmg.sh /absolute/path/to/Aidente-Plus.dmg
 
 ## 公开分发与更新
 
-正式发行使用数字版本标签（例如 v6.2）、`Aidente-6.2-macOS-arm64.zip` 和 `SHA256SUMS-6.2.txt`，另提供拖入安装的 DMG。公开检查不保存或要求 GitHub 令牌。未验证签名身份的自行编译版本不能自动接受公开更新，可从发行页手动安装。自动替换与失败回滚仍需更多跨机型验收；建议公开分发使用 Developer ID 与 Apple 公证。
+正式发行使用数字版本标签（例如 v6.2）、`Aidente-6.2-macOS-arm64.zip` 和 `SHA256SUMS-6.2.txt`，另提供拖入安装的 DMG。公开检查不保存或要求 GitHub 令牌。未验证签名身份的自行编译版本可从发行页手动安装。
+
+准备正式发行时，使用 `AIDENTE_RELEASE_BUILD=1` 运行 `BuildSupport/build_app.sh`，并将 `AIDENTE_SIGNING_IDENTITY` 设为本机有效 Developer ID Application 身份的完整名称或 SHA-1。用 ZIP 将构建好的 App 提交给 Apple 公证，将接受的票据装订回 App，再以 `AIDENTE_RELEASE_BUILD=1` 运行 `script/package_dmg.sh`。用同一份已装订的 App 生成更新 ZIP，并在最终文件上计算 SHA-256。提交发行前验证 DMG 内和 ZIP 解包后的签名、票据以及 Gatekeeper 结果。参见 [Apple 命令行公证流程](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
 
 安装包不含签名私钥、GitHub 令牌或用于开发的证书文件。签名内附带的公开证书属于验证 App 身份所需的信息。快捷指令已有18个动作与3个快捷入口，宿主运行验收仍待执行。
 
