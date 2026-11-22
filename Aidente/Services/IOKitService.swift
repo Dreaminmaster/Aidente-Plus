@@ -102,11 +102,15 @@ class IOKitService {
     }
 
     private func powerNotificationReceived() {
-        let snapshot=IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let type=IOPSGetProvidingPowerSourceType(snapshot).takeUnretainedValue() as String
-        let connected:Bool?=getPropertyValue(batteryService,key:"ExternalConnected")
-        let charging:Bool=getPropertyValue(batteryService,key:"IsCharging") ?? false
-        let state=PowerConnectionSnapshot.resolve(externalConnected:connected,providingAC:type == (kIOPSACPowerValue as String),charging:charging)
+        let providingAC = IOPSCopyPowerSourcesInfo().flatMap { snapshot in
+            IOPSGetProvidingPowerSourceType(snapshot.takeRetainedValue())?.takeUnretainedValue() as String?
+        }.map { $0 == kIOPSACPowerValue }
+        let connected: Bool? = getPropertyValue(batteryService, key: "ExternalConnected")
+        let charging: Bool = getPropertyValue(batteryService, key: "IsCharging") ?? false
+        let state = PowerConnectionSnapshot.resolve(
+            externalConnected: connected, providingAC: providingAC ?? lastConnection?.connected ?? false,
+            charging: charging
+        )
         if state != lastConnection { lastConnection=state;onConnection?(state) }
         // Let the status item paint before enumerating capabilities, adapter profiles and health.
         guard fullRefresh == nil else { return }

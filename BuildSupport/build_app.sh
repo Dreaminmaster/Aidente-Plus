@@ -14,6 +14,11 @@ target="arm64-apple-macosx14.0"
 signing_identity="${AIDENTE_SIGNING_IDENTITY:--}"
 signing_options=(--timestamp=none)
 release_build=${AIDENTE_RELEASE_BUILD:-0}
+community_build=${AIDENTE_COMMUNITY_BUILD:-0}
+if [[ "$release_build" == "1" && "$community_build" == "1" ]]; then
+    print -u2 'Choose either notarized or development-signed distribution.'
+    exit 1
+fi
 if [[ "$release_build" == "1" ]]; then
     if ! developer_id=$(security find-identity -v -p codesigning | awk -v requested="$signing_identity" '
         $2 ~ /^[[:xdigit:]]+$/ && length($2) == 40 {
@@ -35,6 +40,10 @@ if [[ "$release_build" == "1" ]]; then
 fi
 
 if [[ "$signing_identity" == "-" ]]; then
+    if [[ "$community_build" == "1" ]]; then
+        print -u2 'Development-signed distribution requires AIDENTE_SIGNING_IDENTITY.'
+        exit 1
+    fi
     print -u2 "Administrator-install build: ad-hoc integrity signing; no Apple notarization."
 else
     if ! security find-identity -v -p codesigning | grep -F -- "$signing_identity" >/dev/null; then
@@ -42,6 +51,9 @@ else
         exit 1
     fi
     signing_options=(--timestamp --options runtime)
+    if [[ "$community_build" == "1" ]]; then
+        signing_options=(--timestamp=none --options runtime)
+    fi
 fi
 
 if [[ ! -d "$sdk" ]]; then
@@ -275,6 +287,9 @@ codesign \
     "$app_dir"
 
 codesign --verify --deep --strict --verbose=2 "$app_dir"
+if [[ "$community_build" == "1" ]]; then
+    codesign --verify --strict -R '=anchor apple generic' "$app_dir"
+fi
 if [[ "$release_build" == "1" ]]; then
     for signed_component in "$app_dir" \
         "$reader_dir" \
