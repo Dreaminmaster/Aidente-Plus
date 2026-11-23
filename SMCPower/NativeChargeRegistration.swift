@@ -5,6 +5,7 @@ public struct NativeChargeRegistration: Equatable, Sendable {
     public let percentage: Int
     public let reason: String?
     public let allowsDrain: Bool?
+    public let isEndOfCharge: Bool?
 
     public static func read() -> [Self]? {
         let process = Process(), output = Pipe()
@@ -39,11 +40,22 @@ public struct NativeChargeRegistration: Equatable, Sendable {
             guard entry["Terminated"] == "0",
                   let percentage = entry["chargeSocLimitSoc"].flatMap(Int.init),
                   (1...100).contains(percentage) else { return nil }
-            let flag = entry["chargeSocLimitDrain"]
-            let allowsDrain: Bool? = flag == "1" ? true : flag == "0" ? false : nil
-            let registration = Self(percentage: percentage, reason: entry["chargeSocLimitReason"], allowsDrain: allowsDrain)
+            let registration = Self(
+                percentage: percentage,
+                reason: entry["chargeSocLimitReason"],
+                allowsDrain: parseFlag(entry["chargeSocLimitDrain"]),
+                isEndOfCharge: parseFlag(entry["chargeSocLimitIsEOC"])
+            )
             if !active.contains(registration) { active.append(registration) }
         }
         return active
+    }
+
+    private static func parseFlag(_ value: String?) -> Bool? {
+        switch value {
+        case "1": true
+        case "0": false
+        default: nil
+        }
     }
 }

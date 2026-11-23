@@ -160,7 +160,11 @@ class IOKitService {
         var adapterMetrics = AdapterMetrics()
 
         let capacitySnapshot = SystemBatteryReading.registrySnapshot(service: batteryService)
-        let rawCapacity = SystemBatteryReading.rawCapacity(in: capacitySnapshot)
+        let initialCapacity = SystemBatteryReading.rawCapacity(in: capacitySnapshot)
+        let initialTemperature = getBatteryTemperature(powerInfo: powerInfo)
+        let packData = initialCapacity == nil || initialTemperature == nil
+            ? SystemBatteryReading.packData(service: batteryService) : nil
+        let rawCapacity = initialCapacity ?? SystemBatteryReading.rawCapacity(in: packData)
         batteryMetrics.batteryPercentage = displayedPercent
         batteryMetrics.hardwareBatteryPercentage = rawCapacity.map {
             Int(min(100, Double($0.current) / Double($0.full) * 100))
@@ -214,7 +218,7 @@ class IOKitService {
         adapterMetrics.powerProfiles = adapterSpecification.profiles
         adapterMetrics.adapterConnected = batteryMetrics.externalConnected
 
-        if let temp = getBatteryTemperature(powerInfo: powerInfo) {
+        if let temp = initialTemperature ?? SystemBatteryReading.packTemperature(in: packData) {
             batteryMetrics.batteryTemperature = temp
         }
 
@@ -338,9 +342,9 @@ class IOKitService {
     private func getBatteryTemperature(powerInfo: [String: Any]?) -> Double? {
         if let powerInfo,
             let temp = powerInfo[kIOPSTemperatureKey] as? Int,
-            temp > 0
+            let celsius = decikelvinToCelsius(temp)
         {
-            return decikelvinToCelsius(temp)
+            return celsius
         }
 
         guard

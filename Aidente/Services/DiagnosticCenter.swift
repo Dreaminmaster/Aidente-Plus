@@ -355,6 +355,7 @@ final class DiagnosticCenter {
                     var fields: [String: Any] = ["percentage": entry.percentage]
                     if let reason = entry.reason { fields["reason"] = reason }
                     if let allowsDrain = entry.allowsDrain { fields["allowsDrain"] = allowsDrain }
+                    if let isEndOfCharge = entry.isEndOfCharge { fields["isEndOfCharge"] = isEndOfCharge }
                     return fields
                 }
             } else {

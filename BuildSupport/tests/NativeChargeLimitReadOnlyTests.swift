@@ -37,17 +37,22 @@ import IOKit.ps
         precondition(SystemBatteryReading.rawCapacity(in: [rawCurrent: 100, rawFull: 0]) == nil)
         precondition(SystemBatteryReading.rawCapacity(in: [rawCurrent: 0, rawFull: 4468])?.current == 0)
         precondition(SystemBatteryReading.rawCapacity(in: ["CurrentCapacity": 97, "MaxCapacity": 100]) == nil)
+        precondition(SystemBatteryReading.packTemperature(in: ["Temperature": 2529]) == 25.29)
+        precondition(SystemBatteryReading.packTemperature(in: ["Temperature": 0, "VirtualTemperature": 2512]) == 25.12)
+        precondition(SystemBatteryReading.packTemperature(in: ["Temperature": true, "VirtualTemperature": 80_000]) == nil)
         let registered = NativeChargeRegistration.parse("""
             Battery level limits:
             (
-                { Terminated = 0; chargeSocLimitOwner = 679; chargeSocLimitSoc = 97; chargeSocLimitReason = manualChargeLimit; chargeSocLimitDrain = 1; },
-                { Terminated = 0; chargeSocLimitOwner = 0; chargeSocLimitSoc = 97; chargeSocLimitReason = manualChargeLimit; chargeSocLimitDrain = 1; },
+                { Terminated = 0; chargeSocLimitOwner = 679; chargeSocLimitSoc = 97; chargeSocLimitReason = manualChargeLimit; chargeSocLimitDrain = 1; chargeSocLimitIsEOC = 1; },
+                { Terminated = 0; chargeSocLimitOwner = 0; chargeSocLimitSoc = 97; chargeSocLimitReason = manualChargeLimit; chargeSocLimitDrain = 1; chargeSocLimitIsEOC = 1; },
                 { Terminated = 1; chargeSocLimitSoc = 95; },
+                { Terminated = 0; chargeSocLimitSoc = 80; chargeSocLimitReason = optimizedCharging; chargeSocLimitDrain = 0; chargeSocLimitIsEOC = 0; },
                 { Terminated = 0; chargeSocLimitSoc = 80; chargeSocLimitReason = optimizedCharging; chargeSocLimitDrain = 0; }
             )
             """)
-        precondition(registered?.map(\.percentage) == [97, 80])
-        precondition(registered?.map(\.allowsDrain) == [true, false])
+        precondition(registered?.map(\.percentage) == [97, 80, 80])
+        precondition(registered?.map(\.allowsDrain) == [true, false, false])
+        precondition(registered?.map(\.isEndOfCharge) == [true, false, nil])
         precondition(NativeChargeRegistration.parse("No battery level limits set\n") == [])
         precondition(NativeChargeRegistration.parse("Unexpected output") == nil)
         precondition(NativeChargeRegistration.parse("Battery level limits: ({ Terminated = 0; chargeSocLimitSoc = 101; })") == nil)
@@ -71,6 +76,9 @@ import IOKit.ps
         defer { if battery != 0 { IOObjectRelease(battery) } }
         let liveCapacity = SystemBatteryReading.rawCapacity(in: SystemBatteryReading.registrySnapshot(service: battery))
         print("8 raw capacity pair checks passed; live current/full=\(String(describing: liveCapacity))")
-        print("6 active registration checks passed; live registration=\(String(describing: NativeChargeRegistration.read()?.map(\.percentage)))")
+        let pack = SystemBatteryReading.packData(service: battery)
+        print("3 pack temperature checks passed; live pack temperature=\(String(describing: SystemBatteryReading.packTemperature(in: pack)))")
+        let registrations = NativeChargeRegistration.read()
+        print("7 active registration checks passed; live registration=\(String(describing: registrations?.map(\.percentage))), EOC=\(String(describing: registrations?.map(\.isEndOfCharge)))")
     }
 }

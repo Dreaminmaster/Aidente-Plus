@@ -133,7 +133,9 @@ public struct SMCBattery: Sendable, BatteryPowerControlling {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         guard service != 0 else { throw SMCBatteryError.unsupportedCapability }
         defer { IOObjectRelease(service) }
-        guard let capacity = SystemBatteryReading.rawCapacity(in: SystemBatteryReading.registrySnapshot(service: service)) else {
+        let capacity = SystemBatteryReading.rawCapacity(in: SystemBatteryReading.registrySnapshot(service: service))
+            ?? SystemBatteryReading.rawCapacity(in: SystemBatteryReading.packData(service: service))
+        guard let capacity else {
             throw SMCBatteryError.unsupportedCapability
         }
         return (Double(capacity.current), Double(capacity.full))

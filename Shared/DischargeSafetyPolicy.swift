@@ -20,6 +20,7 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
         var startingFullMAh: Double?
         var progressCurrentMAh: Double?
         var waitingForCurrentSince: Date?
+        var suspendedAt: Date?
     }
     private var session: Session?
     private var blockedTarget: Int?
@@ -31,8 +32,15 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
     public mutating func mustStop(managed: Bool, dischargeRequested: Bool, target: Int,
                                   displayed: Int, raw: Double, now: Date,
                                   capacity: (current: Double, full: Double)? = nil,
-                                  nativeCurrentAmps: Double? = nil) -> Bool {
+                                  nativeCurrentAmps: Double? = nil,
+                                  suspended: Bool = false) -> Bool {
         guard managed && dischargeRequested else { reset(); return false }
+        if suspended {
+            if session?.target == target, session?.suspendedAt == nil {
+                session?.suspendedAt = now
+            }
+            return false
+        }
         if blockedTarget == target {
             if stopReason == nil { stopReason = .previousStop }
             return true
@@ -56,6 +64,15 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
                 waitingForCurrentSince: current.map { $0 >= -0.08 } == true ? now : nil)
         }
         guard var active = session else { return false }
+        if let suspendedAt = active.suspendedAt {
+            // The firmware was holding during sleep. Preserve the original
+            // capacity budget and count only awake time towards time limits.
+            let sleepDuration = max(0, now.timeIntervalSince(suspendedAt))
+            active.lastDisplayChange.addTimeInterval(sleepDuration)
+            active.progressAt = active.progressAt?.addingTimeInterval(sleepDuration)
+            active.waitingForCurrentSince = active.waitingForCurrentSince?.addingTimeInterval(sleepDuration)
+            active.suspendedAt = nil
+        }
         let displayProgress = displayed < active.lastDisplay
         let consumed: Double
         let rawProgress: Bool

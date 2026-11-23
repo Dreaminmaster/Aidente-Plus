@@ -251,13 +251,13 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
             }
             let displayReading = Result { try SMCBattery.macOSPercentage() }
             let beforeSafety = dischargeSafety
-            let rawCapacity = policy.adapter ? nil : (try? SMCBattery.rawCapacity())
-            let batteryCurrent = policy.adapter ? nil : (try? SMCBattery.getCurrent())
+            let rawCapacity = target.adapter ? nil : (try? SMCBattery.rawCapacity())
+            let batteryCurrent = target.adapter ? nil : (try? SMCBattery.getCurrent())
             let raw = rawCapacity.map { min(100, max(0, $0.current / $0.full * 100)) } ?? .nan
             let safetyStop = dischargeSafety.mustStop(managed: policy.managed,
                 dischargeRequested: !policy.adapter, target: policy.chargeCeiling,
                 displayed: (try? displayReading.get()) ?? -1, raw: raw, now: Date(),
-                capacity: rawCapacity, nativeCurrentAmps: batteryCurrent)
+                capacity: rawCapacity, nativeCurrentAmps: batteryCurrent, suspended: policy.sleeping)
             if dischargeSafety != beforeSafety {
                 controlDefaults.set(try JSONEncoder().encode(dischargeSafety), forKey: dischargeSafetyKey)
                 guard controlDefaults.synchronize() else { throw CocoaError(.fileWriteUnknown) }

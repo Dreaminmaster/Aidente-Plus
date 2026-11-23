@@ -201,6 +201,40 @@ final class Registers: NativeChargeRegisters {
             displayed: 97, raw: 94.9, now: start.addingTimeInterval(180), nativeCurrentAmps: 0)
             && capacityDropsWhileWaiting.stopReason == .capacityBudget,
             "The startup allowance does not extend the measured capacity budget")
+        var sleepingDischarge = DischargeSafetyPolicy()
+        _ = sleepingDischarge.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 96, now: start, capacity: (4320, 4500), nativeCurrentAmps: -0.5)
+        check(!sleepingDischarge.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: -1, raw: .nan, now: start.addingTimeInterval(60), suspended: true),
+            "Sleep hold does not require discharge telemetry")
+        sleepingDischarge = try JSONDecoder().decode(DischargeSafetyPolicy.self, from: JSONEncoder().encode(sleepingDischarge))
+        check(!sleepingDischarge.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: -1, raw: .nan, now: start.addingTimeInterval(300), suspended: true),
+            "Repeated sleep reconciliation keeps the start of suspension")
+        check(!sleepingDischarge.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 96, now: start.addingTimeInterval(3600), capacity: (4320, 4500), nativeCurrentAmps: 0),
+            "Sleeping for an hour does not spend awake stall time")
+        var budgetAfterSleep = sleepingDischarge
+        check(budgetAfterSleep.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 94.9, now: start.addingTimeInterval(3661), capacity: (4270, 4500), nativeCurrentAmps: -0.5)
+            && budgetAfterSleep.stopReason == .capacityBudget, "Sleep does not grant a fresh capacity budget")
+        check(!budgetAfterSleep.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: -1, raw: .nan, now: start.addingTimeInterval(3670), suspended: true)
+            && budgetAfterSleep.isBlocked, "Sleep hold does not erase a blocked request")
+        check(sleepingDischarge.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 96, now: start.addingTimeInterval(3840), capacity: (4320, 4500), nativeCurrentAmps: 0)
+            && sleepingDischarge.stopReason == .stalled, "The remaining stall limit still applies after wake")
+        var sleepingBeforeStart = DischargeSafetyPolicy()
+        _ = sleepingBeforeStart.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 96, now: start, nativeCurrentAmps: 0)
+        _ = sleepingBeforeStart.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: -1, raw: .nan, now: start.addingTimeInterval(60), suspended: true)
+        check(!sleepingBeforeStart.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 96, now: start.addingTimeInterval(3600), nativeCurrentAmps: 0),
+            "Resuming while awaiting firmware does not use the time asleep as startup grace")
+        check(sleepingBeforeStart.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 96, now: start.addingTimeInterval(4020), nativeCurrentAmps: 0),
+            "Firmware startup remains bounded by the original awake allowance")
         print("PASS: \(count) native policy, sleep, discharge intent, delayed readback and rollback checks (no hardware writes)")
     }
 }

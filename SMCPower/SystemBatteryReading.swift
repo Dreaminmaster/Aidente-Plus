@@ -62,4 +62,29 @@ public enum SystemBatteryReading {
             ?? pair(snapshot[current] ?? nested[current], snapshot[full] ?? nested[full])
             ?? pair(nested["RemainingCapacity"], nested["FullChargeCapacity"])
     }
+
+    public static func packData(service: io_service_t) -> [String: Any]? {
+        guard service != 0 else { return nil }
+        var children: io_iterator_t = 0
+        guard IORegistryEntryGetChildIterator(service, kIOServicePlane, &children) == KERN_SUCCESS else { return nil }
+        defer { IOObjectRelease(children) }
+        while case let child = IOIteratorNext(children), child != 0 {
+            defer { IOObjectRelease(child) }
+            guard IOObjectConformsTo(child, "AppleSmartBatteryPack") != 0 else { continue }
+            if let data = IORegistryEntryCreateCFProperty(child, "BatteryData" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? [String: Any] {
+                return data
+            }
+        }
+        return nil
+    }
+
+    public static func packTemperature(in data: [String: Any]?) -> Double? {
+        for key in ["Temperature", "VirtualTemperature"] {
+            guard let raw = data?[key] as? NSNumber, CFGetTypeID(raw) == CFNumberGetTypeID(),
+                  raw.doubleValue > 0, raw.doubleValue <= 8000 else { continue }
+            return raw.doubleValue / 100
+        }
+        return nil
+    }
 }
