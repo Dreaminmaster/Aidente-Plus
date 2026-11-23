@@ -132,6 +132,22 @@ final class Registers: NativeChargeRegisters {
         check(!safety.mustStop(managed: true, dischargeRequested: true, target: 95,
             displayed: 95, raw: .nan, now: start.addingTimeInterval(30)) && !safety.isBlocked,
             "A confirmed macOS target ends the discharge even if raw capacity briefly disappears")
+        check(safety.hasCompleted(target: 95), "Only the confirmed target is marked completed")
+        safety = try JSONDecoder().decode(DischargeSafetyPolicy.self, from: JSONEncoder().encode(safety))
+        check(!safety.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: .nan, now: start.addingTimeInterval(45)) && safety.hasCompleted(target: 95),
+            "A repeated request after daemon restart and gauge rebound does not rearm completed discharge")
+        check(!safety.mustStop(managed: true, dischargeRequested: false, target: 95,
+            displayed: 96, raw: .nan, now: start.addingTimeInterval(50)) && !safety.hasCompleted(target: 95),
+            "Applying a non-discharge policy acknowledges completion")
+        check(!safety.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 96, raw: 94, now: start.addingTimeInterval(55)) && !safety.hasCompleted(target: 95),
+            "An explicitly restarted discharge still requires the macOS display to reach its target")
+        _ = safety.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 95, raw: 94, now: start.addingTimeInterval(60))
+        check(!safety.mustStop(managed: true, dischargeRequested: true, target: 94,
+            displayed: 95, raw: 94, now: start.addingTimeInterval(65)) && !safety.hasCompleted(target: 95),
+            "A new target starts a separate discharge")
         var stalled = DischargeSafetyPolicy()
         check(!stalled.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.5, now: start), "Start a one-point discharge")
         check(!stalled.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 96, raw: 94.7, now: start.addingTimeInterval(220)), "A temporary rise does not restart the progress timer")

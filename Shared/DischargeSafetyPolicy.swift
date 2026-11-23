@@ -24,10 +24,17 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
     }
     private var session: Session?
     private var blockedTarget: Int?
+    private var completedTarget: Int?
     public private(set) var stopReason: StopReason?
     public init() {}
     public var isBlocked: Bool { blockedTarget != nil }
-    public mutating func reset() { session = nil; blockedTarget = nil; stopReason = nil }
+    public func hasCompleted(target: Int) -> Bool { completedTarget == target }
+    public mutating func reset() {
+        session = nil
+        blockedTarget = nil
+        completedTarget = nil
+        stopReason = nil
+    }
     /// True means stop and restore the captured system policy, never "complete".
     public mutating func mustStop(managed: Bool, dischargeRequested: Bool, target: Int,
                                   displayed: Int, raw: Double, now: Date,
@@ -46,10 +53,16 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
             return true
         }
         if blockedTarget != nil { reset() }
+        if hasCompleted(target: target) { return false }
+        completedTarget = nil
         // A valid macOS reading at or below the target ends the discharge.
         // Raw capacity is needed to guard continued draining above that target.
         let validDisplay = (0...100).contains(displayed)
-        if validDisplay && displayed <= target { reset(); return false }
+        if validDisplay && displayed <= target {
+            reset()
+            completedTarget = target
+            return false
+        }
         guard validDisplay, raw.isFinite, (1...100).contains(raw) else {
             blockedTarget = target
             stopReason = .invalidReading

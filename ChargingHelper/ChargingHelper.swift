@@ -305,7 +305,16 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
             }
             let percentage = try displayReading.get()
             let externalConnected = try SMCBattery.externalPowerConnected()
-            guard let limit = nativePolicy.target(policy: policy, percentage: percentage,
+            var nativeRequest = policy
+            let completed = !policy.adapter && dischargeSafety.hasCompleted(target: policy.chargeCeiling)
+            let isNewCompletion = completed && !beforeSafety.hasCompleted(target: policy.chargeCeiling)
+            if completed {
+                nativeRequest.adapter = true
+                nativeRequest.charging = false
+                nativeRequest.followNaturalDrift = false
+                if isNewCompletion { nativePolicy.reset() }
+            }
+            guard let limit = nativePolicy.target(policy: nativeRequest, percentage: percentage,
                                                    externalConnected: externalConnected) else { return }
             if controlDefaults.data(forKey: nativePreferencesKey) == nil {
                 // Snapshot only the two preferences we own while managing, and
@@ -315,8 +324,11 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
             }
             let previous = try controller.snapshot()
             try controller.set(limit)
+            if isNewCompletion {
+                logger.notice("DISCHARGE_TARGET_HOLD_REGISTERED display=\(percentage) target=\(policy.chargeCeiling)")
+            }
             if try controller.snapshot() != previous {
-                logger.notice("NATIVE_POLICY_APPLIED display=\(percentage) target=\(limit) chargingRequested=\(target.charging) dischargeRequested=\(!target.adapter) sleeping=\(policy.sleeping)")
+                logger.notice("NATIVE_POLICY_APPLIED display=\(percentage) target=\(limit) chargingRequested=\(nativeRequest.effective.charging) dischargeRequested=\(!nativeRequest.effective.adapter) sleeping=\(policy.sleeping)")
             }
         } else {
             try battery.applyPowerState(charging: target.charging, adapter: target.adapter)
@@ -395,7 +407,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
     private func applyLEDPolicy() throws {
         guard adapter.capabilities.magSafeControl, ledPolicyConfigured else { return }
         let target = MagSafePolicy.target(enabled: ledEnabled, mode: ledMode, sleeping: sleeping,
-            discharging: policy.map { !$0.effective.adapter } ?? false,
+            discharging: policy.map { !$0.effective.adapter && !dischargeSafety.hasCompleted(target: $0.chargeCeiling) } ?? false,
             blinkDuringDischarge: ledBlink, requested: requestedLED)
         if let state = MagSafeLEDState(rawValue: target), try adapter.getMagSafeLEDState() != state {
             try adapter.setMagSafeLEDState(state)
