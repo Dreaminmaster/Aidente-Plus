@@ -182,8 +182,8 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                         NSLocalizedDescriptionKey: "无法注册系统睡眠通知，请修复控制服务"
                     ])
                 }
-                try self.applyEffectivePolicy()
-                reply(true, nil)
+                let finished = try self.applyEffectivePolicy()
+                reply(true, finished ? PowerPolicyReply.dischargeTargetReached.rawValue : nil)
             } catch {
                 self.logger.error("POWER_POLICY_FAILED \(error.localizedDescription, privacy: .public)")
                 if case SMCError.notPrivileged = error {
@@ -195,8 +195,9 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
         }
     }
 
-    private func applyEffectivePolicy() throws {
-        guard let policy else { return }
+    @discardableResult
+    private func applyEffectivePolicy() throws -> Bool {
+        guard let policy else { return false }
         let target = policy.effective
         if battery.usesFirmwareChargeLimit {
             let controller = FirmwareChargeLimitController(registers: SMCFirmwareLimitRegisters())
@@ -247,7 +248,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
         } else if !battery.capabilities.inhibitChargeControl, let nativeLimit {
             let controller = NativeChargeTransaction(registers: PowerUIChargeRegisters(client: nativeLimit))
             guard policy.managed else {
-                try restoreNativeLimit(); nativePolicy.reset(); clearDischargeSafety(); return
+                try restoreNativeLimit(); nativePolicy.reset(); clearDischargeSafety(); return false
             }
             let displayReading = Result { try SMCBattery.macOSPercentage() }
             let beforeSafety = dischargeSafety
@@ -315,7 +316,7 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 if isNewCompletion { nativePolicy.reset() }
             }
             guard let limit = nativePolicy.target(policy: nativeRequest, percentage: percentage,
-                                                   externalConnected: externalConnected) else { return }
+                                                   externalConnected: externalConnected) else { return false }
             if controlDefaults.data(forKey: nativePreferencesKey) == nil {
                 // Snapshot only the two preferences we own while managing, and
                 // their effective result. Missing keys must remain missing on restore.
@@ -330,9 +331,11 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
             if try controller.snapshot() != previous {
                 logger.notice("NATIVE_POLICY_APPLIED display=\(percentage) target=\(limit) chargingRequested=\(nativeRequest.effective.charging) dischargeRequested=\(!nativeRequest.effective.adapter) sleeping=\(policy.sleeping)")
             }
+            return completed && externalConnected && !policy.sleeping
         } else {
             try battery.applyPowerState(charging: target.charging, adapter: target.adapter)
         }
+        return false
     }
 
     private func clearDischargeSafety() {

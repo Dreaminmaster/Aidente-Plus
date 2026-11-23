@@ -85,6 +85,11 @@ public struct ChargeLimitPolicy {
 
     public init() {}
 
+    public mutating func confirmDischargeTargetReached() {
+        automaticDischargeActive = false
+        reachedLimit = true
+    }
+
     public mutating func evaluate(
         percentage: Int, limit: Int, sailing: Bool, sailingRange: Int,
         automaticDischarge: Bool, initialize: Bool

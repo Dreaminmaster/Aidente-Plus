@@ -700,7 +700,7 @@ class ChargeManager {
             defer { powerTask = nil }
             while !Task.isCancelled, let request = pendingPowerRequest {
                 do {
-                    try await batteryService.applyPowerPolicy(
+                    let response = try await batteryService.applyPowerPolicy(
                         charging: request.charging, adapter: request.adapter, managed: request.managed,
                         stopWhileSleeping: request.stopWhileSleeping,
                         resetOnDisconnect: request.resetOnDisconnect, followNaturalDrift: request.followNaturalDrift,
@@ -713,6 +713,15 @@ class ChargeManager {
                     guard pendingPowerRequest == request else { continue }
                     clearControlErrors()
                     batteryService.scheduleSinglePoll()
+                    if response == .dischargeTargetReached, !request.adapter, !isSystemSleeping,
+                       calibrationStage == .idle, case .discharging(let target) = operationStatus,
+                       target == request.chargeCeiling {
+                        forceDischargeActive = false
+                        limitPolicy.confirmDischargeTargetReached()
+                        evaluate(controlState: batteryService.controlState)
+                        recordControlTransition(reason: "dischargeTargetReached")
+                        if pendingPowerRequest != request { continue }
+                    }
                     if changed { schedulePowerVerification(request, preserveVerifiedHold: preserveHold) }
                 } catch {
                     let failureCause: String?

@@ -147,6 +147,16 @@ final class SimulatedBattery: BatteryPowerControlling {
         check(DischargeRequestPolicy.target(limit: 92, percentage: 95) == 92, "Moving target updates an active manual discharge")
         check(DischargeRequestPolicy.target(limit: 96, percentage: 95) == nil, "Raising target above current battery ends manual discharge")
         check(DischargeRequestPolicy.target(limit: 95, percentage: 95) == nil, "Reaching discharge target ends request")
+        var acknowledgedDischarge = ChargeLimitPolicy()
+        _ = acknowledgedDischarge.evaluate(percentage: 97, limit: 95, sailing: false,
+            sailingRange: 2, automaticDischarge: true, initialize: true)
+        let completion = PowerPolicyReply(rawValue: "DISCHARGE_TARGET_REACHED")
+        check(completion == .dischargeTargetReached, "The daemon's completion reply has a stable wire value")
+        acknowledgedDischarge.confirmDischargeTargetReached()
+        let afterConfirmation = acknowledgedDischarge.evaluate(percentage: 96, limit: 95, sailing: false,
+            sailingRange: 2, automaticDischarge: true, initialize: false)
+        check(afterConfirmation.adapter && !afterConfirmation.charging,
+            "A late app-side sample cannot reactivate an acknowledged discharge")
         var contradiction = ChargeHoldVerification()
         _ = contradiction.sample(batteryPower: -10, isCharging: true)
         _ = contradiction.sample(batteryPower: -10, isCharging: true)

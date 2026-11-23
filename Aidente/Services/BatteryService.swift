@@ -352,15 +352,16 @@ class BatteryService {
 
     func applyPowerPolicy(charging: Bool, adapter: Bool, managed: Bool,
                           stopWhileSleeping: Bool, resetOnDisconnect: Bool, followNaturalDrift: Bool,
-                          chargeCeiling: Int, rechargeBelow: Int) async throws {
+                          chargeCeiling: Int, rechargeBelow: Int) async throws -> PowerPolicyReply? {
         try await ChargingHelperManager.shared.prepareForControl()
         do {
-            try await performControlCommand { helper, reply in
+            let response = try await performControlCommandWithResponse { helper, reply in
                 helper.applyPowerPolicy(charging: charging, adapter: adapter, managed: managed,
                                         stopWhileSleeping: stopWhileSleeping,
                                         resetOnDisconnect: resetOnDisconnect, followNaturalDrift: followNaturalDrift,
                                         chargeCeiling: chargeCeiling, rechargeBelow: rechargeBelow, reply: reply)
             }
+            return response.flatMap(PowerPolicyReply.init(rawValue:))
         } catch {
             ChargingHelperManager.shared.recoverAfterTransportFailure(error)
             throw error
@@ -406,7 +407,16 @@ class BatteryService {
             @escaping @Sendable (Bool, String?) -> Void
         ) -> Void
     ) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        _ = try await performControlCommandWithResponse(command)
+    }
+
+    private func performControlCommandWithResponse(
+        _ command: @escaping @Sendable (
+            AidenteControlProtocol,
+            @escaping @Sendable (Bool, String?) -> Void
+        ) -> Void
+    ) async throws -> String? {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String?, Error>) in
             let commandReply = XPCCommandReply(continuation)
             guard
                 let helper = ChargingHelperManager.shared.getHelper(errorHandler: { error in
@@ -421,14 +431,14 @@ class BatteryService {
                 commandReply.finish(.failure(XPCError.timeout))
             }
 
-            command(helper) { success, errorMessage in
+            command(helper) { success, message in
                 if success {
-                    commandReply.finish(.success(()))
+                    commandReply.finish(.success(message))
                 } else {
                     commandReply.finish(
                         .failure(
                             XPCError.commandFailed(
-                                errorMessage ?? AidenteL10n.t("未知错误", "Unknown error")
+                                message ?? AidenteL10n.t("未知错误", "Unknown error")
                             )
                         )
                     )

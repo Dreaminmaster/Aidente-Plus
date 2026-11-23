@@ -1,5 +1,9 @@
 import Foundation
 
+public enum PowerPolicyReply: String, Sendable {
+    case dischargeTargetReached = "DISCHARGE_TARGET_REACHED"
+}
+
 @objc public protocol AidenteReaderProtocol {
     func readComponentPower(reply: @escaping @Sendable (String) -> Void)
     func nativeChargeLimits(reply: @escaping @Sendable (String) -> Void)
