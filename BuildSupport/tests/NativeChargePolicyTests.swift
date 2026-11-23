@@ -128,6 +128,10 @@ final class Registers: NativeChargeRegisters {
         check(!safety.mustStop(managed: true, dischargeRequested: true, target: 80, displayed: 82, raw: 82, now: start), "Ordinary progress begins")
         check(!safety.mustStop(managed: true, dischargeRequested: true, target: 80, displayed: 81, raw: 80, now: start.addingTimeInterval(180)), "A fresh lower display reading is real progress")
         check(!safety.mustStop(managed: true, dischargeRequested: true, target: 80, displayed: 80, raw: 79.5, now: start.addingTimeInterval(360)), "Reaching the requested display target completes without a stale-gauge error")
+        _ = safety.mustStop(managed: true, dischargeRequested: true, target: 95, displayed: 96, raw: 95.6, now: start)
+        check(!safety.mustStop(managed: true, dischargeRequested: true, target: 95,
+            displayed: 95, raw: .nan, now: start.addingTimeInterval(30)) && !safety.isBlocked,
+            "A confirmed macOS target ends the discharge even if raw capacity briefly disappears")
         var stalled = DischargeSafetyPolicy()
         check(!stalled.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 95, raw: 94.5, now: start), "Start a one-point discharge")
         check(!stalled.mustStop(managed: true, dischargeRequested: true, target: 94, displayed: 96, raw: 94.7, now: start.addingTimeInterval(220)), "A temporary rise does not restart the progress timer")

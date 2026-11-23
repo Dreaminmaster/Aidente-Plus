@@ -38,12 +38,15 @@ public struct DischargeSafetyPolicy: Codable, Equatable {
             return true
         }
         if blockedTarget != nil { reset() }
-        guard raw.isFinite, (1...100).contains(raw), (0...100).contains(displayed) else {
+        // A valid macOS reading at or below the target ends the discharge.
+        // Raw capacity is needed to guard continued draining above that target.
+        let validDisplay = (0...100).contains(displayed)
+        if validDisplay && displayed <= target { reset(); return false }
+        guard validDisplay, raw.isFinite, (1...100).contains(raw) else {
             blockedTarget = target
             stopReason = .invalidReading
             return true
         }
-        guard displayed > target else { reset(); return false }
         let current = nativeCurrentAmps.flatMap { $0.isFinite ? $0 : nil }
         if session?.target != target {
             session = Session(target: target, startingDisplay: displayed, startingRaw: raw,
