@@ -414,8 +414,19 @@ class MenuViewModel {
         uptimeTask = nil
     }
 
-    private func publishEnergyApps(_ snapshots: [AppEnergyUsageSnapshot]) {
-        let ids = AppListOrder.presentationIDs(current: topEnergyApps.map(\.id), incoming: snapshots.map(\.id), interacting: AppListInteractionState.shared.isInteracting)
+    private struct EnergyAppScope: Equatable, Sendable {
+        let minimumCPU = Double(Defaults[.energyUsageThreshold])
+        let includeBackground = Defaults[.includeBackgroundEnergyProcesses]
+        let onlySignificant = !Defaults[.showAllRunningApps]
+    }
+    private var lastEnergyAppScope: EnergyAppScope?
+    var energyAppScopeIsUpdating: Bool {
+        lastEnergyAppScope.map { $0 != EnergyAppScope() } ?? false
+    }
+
+    private func publishEnergyApps(_ snapshots: [AppEnergyUsageSnapshot], scopeChanged: Bool) {
+        let ids = AppListOrder.presentationIDs(current: topEnergyApps.map(\.id), incoming: snapshots.map(\.id),
+            interacting: AppListInteractionState.shared.isInteracting, scopeChanged: scopeChanged)
         let fresh = Dictionary(snapshots.map { ($0.id,$0) }, uniquingKeysWith: { first,_ in first })
         let previous = Dictionary(topEnergyApps.map { ($0.id,$0) }, uniquingKeysWith: { first,_ in first })
         topEnergyApps = ids.compactMap { fresh[$0] ?? previous[$0] }
@@ -429,16 +440,7 @@ class MenuViewModel {
 
         energyUsageTask = Task { [weak self] in
             while !Task.isCancelled {
-                let snapshots = await Task.detached(priority: .utility) {
-                    AppEnergyUsageService.readTopApps(minimumCPU: Double(Defaults[.energyUsageThreshold]), includeBackground: Defaults[.includeBackgroundEnergyProcesses], onlySignificant: !Defaults[.showAllRunningApps])
-                }.value
-
-                guard !Task.isCancelled else { return }
-                guard let snapshots else { try? await Task.sleep(for: .seconds(2)); continue }
-                if !GraphInteractionState.shared.isInspecting { self?.publishEnergyApps(snapshots) }
-                self?.hasEnergyUsageSample = true
-                self?.lastEnergyUsageUpdate = Date()
-
+                await self?.sampleEnergyApps()
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -449,16 +451,25 @@ class MenuViewModel {
         energyUsageTask = nil
     }
 
-    private func refreshEnergyUsage() {
+    func refreshEnergyUsage() {
         Task { [weak self] in
-            let snapshots = await Task.detached(priority: .utility) {
-                AppEnergyUsageService.readTopApps(minimumCPU: Double(Defaults[.energyUsageThreshold]), includeBackground: Defaults[.includeBackgroundEnergyProcesses], onlySignificant: !Defaults[.showAllRunningApps])
-            }.value
-            guard !Task.isCancelled, let snapshots else { return }
-            if !GraphInteractionState.shared.isInspecting { self?.publishEnergyApps(snapshots) }
-            self?.hasEnergyUsageSample = true
-                self?.lastEnergyUsageUpdate = Date()
+            await self?.sampleEnergyApps()
         }
+    }
+
+    private func sampleEnergyApps() async {
+        let scope = EnergyAppScope()
+        let snapshots = await Task.detached(priority: .utility) {
+            AppEnergyUsageService.readTopApps(minimumCPU: scope.minimumCPU,
+                includeBackground: scope.includeBackground, onlySignificant: scope.onlySignificant)
+        }.value
+        guard !Task.isCancelled, scope == EnergyAppScope(), let snapshots else { return }
+        let scopeChanged = lastEnergyAppScope.map { $0 != scope } ?? false
+        guard scopeChanged || !GraphInteractionState.shared.isInspecting else { return }
+        publishEnergyApps(snapshots, scopeChanged: scopeChanged)
+        lastEnergyAppScope = scope
+        hasEnergyUsageSample = true
+        lastEnergyUsageUpdate = Date()
     }
 
     func menuWillOpen() {

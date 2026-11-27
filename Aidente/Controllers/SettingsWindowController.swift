@@ -13,6 +13,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let chargeManager: ChargeManager
     private let diagnosticCenter: DiagnosticCenter
     private let updateService: UpdateService
+    var onOpenMainMenu: (() -> Void)?
 
     init(
         viewModel: MenuViewModel,
@@ -44,7 +45,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             diagnosticCenter: diagnosticCenter,
             updateService: updateService,
             navigation: navigation,
-            onSelection: { _ in }
+            onSelection: { _ in },
+            onOpenMainMenu: { [weak self] in self?.onOpenMainMenu?() }
         )
         let hostingController = NSHostingController(rootView: AidenteAppearanceRoot { settingsView })
 

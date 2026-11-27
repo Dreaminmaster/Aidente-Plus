@@ -179,7 +179,13 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
             case .popover: break
             case .none: return
             case .toggleCharging:
-                if viewModel.manageChargingEnabled && !AidenteRuntime.isUIPreview { viewModel.toggleManualPause() }
+                if viewModel.manageChargingEnabled && !viewModel.systemCalibrationActive
+                    && viewModel.adapterConnected && !AidenteRuntime.isUIPreview {
+                    viewModel.toggleManualPause()
+                } else {
+                    dismissMenu()
+                    settingsWindowController.showSettings(tab: .charging)
+                }
                 return
             case .toggleLowPower:
                 let service = EnergyModeService.shared
@@ -322,8 +328,14 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         settingsWindowController.showSettings(tab: .overview)
     }
 
-    private func presentDashboardWindow() {
-        guard dashboardWindow == nil else { return }
+    func showMainMenu() {
+        dismissMenu()
+        if let dashboardWindow {
+            if dashboardWindow.isMiniaturized { dashboardWindow.deminiaturize(nil) }
+            NSApp.activate(ignoringOtherApps: true)
+            dashboardWindow.makeKeyAndOrderFront(nil)
+            return
+        }
 
         let hostingController = NSHostingController(rootView: makeDashboardRootView())
         let window = NSWindow(contentViewController: hostingController)
@@ -349,6 +361,11 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
     }
 
     func showPopoverForPreview() {
+        if let popoverPanel, popoverPanel.isVisible, popoverPanel.isOnActiveSpace {
+            popoverPanel.orderFrontRegardless()
+            popoverPanel.makeKey()
+            return
+        }
         guard let button = statusItem.button else { return }
         presentPopover(relativeTo: button)
     }

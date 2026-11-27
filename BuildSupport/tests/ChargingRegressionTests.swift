@@ -147,6 +147,12 @@ final class SimulatedBattery: BatteryPowerControlling {
         check(DischargeRequestPolicy.target(limit: 92, percentage: 95) == 92, "Moving target updates an active manual discharge")
         check(DischargeRequestPolicy.target(limit: 96, percentage: 95) == nil, "Raising target above current battery ends manual discharge")
         check(DischargeRequestPolicy.target(limit: 95, percentage: 95) == nil, "Reaching discharge target ends request")
+        check(ChargeLimitInput.parse(" 95 ", allowBelow80: false) == 95, "The typed limit accepts a whole percentage")
+        check(ChargeLimitInput.parse("20", allowBelow80: true) == 20, "Below-80 mode accepts its minimum")
+        for invalid in ["", "91.5", "invalid", "79", "101", "-95"] {
+            check(ChargeLimitInput.parse(invalid, allowBelow80: false) == nil,
+                "An invalid typed limit cannot silently change the saved limit: \(invalid)")
+        }
         var acknowledgedDischarge = ChargeLimitPolicy()
         _ = acknowledgedDischarge.evaluate(percentage: 97, limit: 95, sailing: false,
             sailingRange: 2, automaticDischarge: true, initialize: true)

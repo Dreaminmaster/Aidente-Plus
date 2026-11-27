@@ -145,8 +145,9 @@ struct ChargingSettingsView: View {
             }
             UtilitySurface {
                 VStack(spacing: 10) {
-                    AidenteSettingToggle("管理充电", subtitle: "首次启用或升级需管理员授权安装后台服务，无需开发者账号", icon: "switch.2", colors: [], isOn: Binding(get: { manageCharging && helperManager.isInstalled && helperManager.registrationError == nil }, set: { toggleManageCharging($0) }))
-                        .disabled(helperManager.isBusy || AidenteRuntime.isUIPreview || helperManager.isRunningFromDiskImage)
+                    AidenteSettingToggle("管理充电", subtitle: "首次启用或升级需管理员授权安装后台服务，无需开发者账号", icon: "switch.2", colors: [],
+                        isOn: Binding(get: { manageCharging && helperManager.isInstalled && helperManager.registrationError == nil }, set: { toggleManageCharging($0) }),
+                        isEnabled: !helperManager.isBusy && !AidenteRuntime.isUIPreview && !helperManager.isRunningFromDiskImage)
                     HStack {
                         Text(AidenteRuntime.isUIPreview ? AidenteL10n.t("界面预览 · 不会控制充电", "UI Preview · No charging control") : chargeManager.operationStatusTitle).font(.caption).foregroundStyle(.secondary)
                         Spacer()
@@ -154,6 +155,10 @@ struct ChargingSettingsView: View {
                             .disabled(helperManager.isBusy || AidenteRuntime.isUIPreview || helperManager.isRunningFromDiskImage)
                     }
                     if let error = chargeManager.controlError { Text(error).font(.caption).foregroundStyle(.red) }
+                    if helperManager.isRunningFromDiskImage {
+                        Text(AidenteL10n.t("请将 Aidente 拖入「应用程序」并从那里打开，再启用充电管理。", "Move Aidente to Applications and open it there to enable charging management."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if let notice = chargeManager.dischargeProtectionNotice {
                         Label(notice, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.secondary)
                     }

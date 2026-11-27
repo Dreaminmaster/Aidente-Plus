@@ -212,12 +212,15 @@ struct AidenteSettingToggle: View {
     let icon: String
     let colors: [Color]
     @Binding var isOn: Bool
-    init(_ title: String, subtitle: String? = nil, icon: String, colors: [Color], isOn: Binding<Bool>) {
+    let isEnabled: Bool
+    init(_ title: String, subtitle: String? = nil, icon: String, colors: [Color], isOn: Binding<Bool>, isEnabled: Bool = true) {
         self.title = title; self.subtitle = subtitle; self.icon = icon; self.colors = colors; _isOn = isOn
+        self.isEnabled = isEnabled
     }
     var body: some View {
         AidenteControlRow(title, subtitle: subtitle, icon: icon, colors: colors) {
             Toggle(AidenteL10n.t(title), isOn: $isOn).labelsHidden().toggleStyle(.switch).controlSize(.regular)
+                .disabled(!isEnabled)
         }
     }
 }

@@ -9,7 +9,8 @@ public enum AppListOrder {
         }
     }
     /// Hold the click targets while a list is hovered or a quit dialog is open.
-    public static func presentationIDs(current: [String], incoming: [String], interacting: Bool) -> [String] {
-        interacting && !current.isEmpty ? current : incoming
+    public static func presentationIDs(current: [String], incoming: [String], interacting: Bool,
+                                       scopeChanged: Bool = false) -> [String] {
+        interacting && !scopeChanged && !current.isEmpty ? current : incoming
     }
 }

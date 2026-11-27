@@ -170,3 +170,13 @@ public enum DischargeRequestPolicy {
         return percentage > limit ? limit : nil
     }
 }
+
+public enum ChargeLimitInput {
+    public static func parse(_ text: String, allowBelow80: Bool) -> Int? {
+        let valueText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...3).contains(valueText.count), valueText.allSatisfy(\.isASCII),
+              valueText.allSatisfy(\.isNumber), let value = Int(valueText),
+              ((allowBelow80 ? 20 : 80)...100).contains(value) else { return nil }
+        return value
+    }
+}

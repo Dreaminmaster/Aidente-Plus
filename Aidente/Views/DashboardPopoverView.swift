@@ -70,30 +70,41 @@ struct DashboardPopoverView: View {
     @State private var draft = 80.0
     @State private var editingLimit = false
     @State private var enteringLimit = false
-    @State private var typedLimit = 80
+    @State private var typedLimit = ""
+    @FocusState private var limitFieldIsFocused: Bool
     @State private var dragged: String?
     private let editor = PopoverEditorState.shared
     private var canControl: Bool { viewModel.manageChargingEnabled && !AidenteRuntime.isUIPreview && !viewModel.systemCalibrationActive }
     private var canEditLimit: Bool {
         !viewModel.chargeLimitOverrideActive && !viewModel.calibrationActive && !viewModel.systemCalibrationActive
     }
+    private var typedTarget: Int? { ChargeLimitInput.parse(typedLimit, allowBelow80: below80) }
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 14) {
                 HStack(spacing: 8) {
                     Button {
-                        typedLimit = viewModel.effectiveChargeLimit; enteringLimit = true
+                        typedLimit = String(viewModel.effectiveChargeLimit)
+                        enteringLimit = true
                     } label: {
                         Text(AidenteL10n.t("上限：", "Limit: ") + "\(editingLimit ? Int(draft.rounded()) : viewModel.effectiveChargeLimit)%")
                             .fontWeight(.semibold).monospacedDigit()
                     }.popover(isPresented: $enteringLimit) {
-                        HStack {
-                            TextField(AidenteL10n.t("充电上限", "Charge Limit"), value: $typedLimit, format: .number)
-                                .frame(width: 48).onSubmit { commitTypedLimit() }
-                            Text("%")
-                            Button(AidenteL10n.t("好", "OK")) { commitTypedLimit() }.keyboardShortcut(.defaultAction)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(below80 ? "20–100%" : "80–100%").font(.caption).foregroundStyle(.secondary)
+                            HStack {
+                                TextField(AidenteL10n.t("充电上限", "Charge Limit"), text: $typedLimit)
+                                    .focused($limitFieldIsFocused)
+                                    .frame(width: 58).onSubmit { commitTypedLimit() }
+                                Text("%")
+                                Button(AidenteL10n.t("取消", "Cancel")) { enteringLimit = false }
+                                    .keyboardShortcut(.cancelAction)
+                                Button(AidenteL10n.t("好", "OK")) { commitTypedLimit() }
+                                    .keyboardShortcut(.defaultAction).disabled(typedTarget == nil)
+                            }
                         }.padding(12)
+                            .onAppear { limitFieldIsFocused = true }
                     }.disabled(!canEditLimit).help(AidenteL10n.t("输入目标百分比", "Enter a target percentage"))
                     Spacer(minLength: 0)
                     Button { viewModel.toggleForceDischarge() } label: {
@@ -101,8 +112,10 @@ struct DashboardPopoverView: View {
                             Text(AidenteL10n.t(viewModel.dischargeRequested ? "停止" : "放电", viewModel.dischargeRequested ? "Stop" : "Discharge"))
                             Image(systemName: viewModel.dischargeRequested ? "stop.circle" : "minus.circle").font(.system(size: 16))
                         }
-                    }.disabled(!canControl || (!viewModel.dischargeRequested && viewModel.displayPercentage <= limit))
-                        .help(AidenteL10n.t(automaticDischarge
+                    }.disabled(!canControl || (!viewModel.dischargeRequested && (!viewModel.adapterConnected || viewModel.displayPercentage <= limit)))
+                        .help(!viewModel.adapterConnected && !viewModel.dischargeRequested
+                              ? AidenteL10n.t("接通电源后可主动放电至设定上限。", "Connect power to discharge to the charge limit.")
+                              : AidenteL10n.t(automaticDischarge
                             ? "自动放电已开启。停止会同时关闭自动放电，避免立即重新开始。"
                             : "将电池放电至设定的充电上限；放电期间点击停止。",
                             automaticDischarge
@@ -113,8 +126,10 @@ struct DashboardPopoverView: View {
                             Text(AidenteL10n.t(viewModel.chargeLimitOverrideActive ? "停止" : "充满", viewModel.chargeLimitOverrideActive ? "Stop" : "Top Up"))
                             Image(systemName: "plus.circle").font(.system(size: 16))
                         }
-                    }.disabled(!canControl || (!viewModel.chargeLimitOverrideActive && viewModel.effectiveChargeLimit == 100))
-                        .help(AidenteL10n.t("充至 100%，保持至拔掉电源。", "Charge to 100% and hold until unplugged."))
+                    }.disabled(!canControl || (!viewModel.chargeLimitOverrideActive && (!viewModel.adapterConnected || viewModel.effectiveChargeLimit == 100)))
+                        .help(!viewModel.adapterConnected && !viewModel.chargeLimitOverrideActive
+                              ? AidenteL10n.t("接通电源后可临时充满。", "Connect power to top up.")
+                              : AidenteL10n.t("充至 100%，保持至拔掉电源。", "Charge to 100% and hold until unplugged."))
                     Button { onOpenSettings(.overview) } label: {
                         Image(systemName: "square.grid.2x2").font(.system(size: 16))
                     }.accessibilityLabel(AidenteL10n.t("打开设置", "Open Settings"))
@@ -265,9 +280,9 @@ struct DashboardPopoverView: View {
     }
 
     private func commitTypedLimit() {
+        guard canEditLimit, let typedTarget else { return }
         enteringLimit = false
-        guard canEditLimit else { return }
-        limit = min(100, max(below80 ? 20 : 80, typedLimit))
+        limit = typedTarget
         draft = Double(limit)
     }
     private func move(_ widget: PopoverWidget, _ offset: Int) {
@@ -330,7 +345,9 @@ struct EnergyAppsWidget: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(showAll ? AidenteL10n.t("运行中的 App", "Running Apps") : AidenteL10n.t("高能耗 App", "Significant Energy")).font(.caption.weight(.semibold))
-                Text("\(viewModel.topEnergyApps.count)").font(.caption2).foregroundStyle(.secondary)
+                if !viewModel.energyAppScopeIsUpdating {
+                    Text("\(viewModel.topEnergyApps.count)").font(.caption2).foregroundStyle(.secondary)
+                }
                 Spacer()
                 DashboardMenuButton(symbol: "line.3.horizontal.decrease", label: AidenteL10n.t("App 列表显示范围", "App List Scope")) { menu, target in
                     menu.addItem(target.item(AidenteL10n.t("所有运行中的 App", "All Running Apps"), checked: showAll) { showAll = true })
@@ -340,10 +357,12 @@ struct EnergyAppsWidget: View {
             }
             Text(AidenteL10n.t("App 功率为进程能耗估算，不等于电脑总功率，也不作为整机分流。", "App watts are process estimates, not total Mac power or a hardware power breakdown."))
                 .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if viewModel.topEnergyApps.count > 6 {
+            if !viewModel.energyAppScopeIsUpdating && viewModel.topEnergyApps.count > 6 {
                 Text(AidenteL10n.t("按名称排序 · 向下滚动查看全部", "Sorted by name · scroll to see all")).font(.caption2).foregroundStyle(.secondary)
             }
-            if viewModel.topEnergyApps.isEmpty {
+            if viewModel.energyAppScopeIsUpdating {
+                Text(AidenteL10n.t("正在更新 App 列表…", "Updating the app list…")).font(.caption).foregroundStyle(.secondary)
+            } else if viewModel.topEnergyApps.isEmpty {
                 Text(viewModel.hasEnergyUsageSample ? (showAll ? AidenteL10n.t("没有运行中的 App", "No running apps") : AidenteL10n.t("没有使用大量能耗的 App", "No apps using significant energy")) : AidenteL10n.t("正在采集近期 App 用量…", "Sampling recent app activity…")).font(.caption).foregroundStyle(.secondary)
             } else {
                 ForEach(viewModel.topEnergyApps) { app in
@@ -400,6 +419,7 @@ struct EnergyAppsWidget: View {
             hoveringList = hovering
             AppListInteractionState.shared.update(interactionID, active: hovering || showingQuitConfirmation)
         }
+        .onChange(of: showAll) { _, _ in viewModel.refreshEnergyUsage() }
         .onChange(of: showingQuitConfirmation) { _, value in AppListInteractionState.shared.update(interactionID, active: hoveringList || value) }
         .onDisappear { AppListInteractionState.shared.update(interactionID, active: false) }
         .alert(forceQuit ? AidenteL10n.t("强制退出 App？", "Force quit app?") : AidenteL10n.t("退出 App？", "Quit app?"),
@@ -589,6 +609,7 @@ private struct DashboardMenuButton: NSViewRepresentable {
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
         button.toolTip = label
         button.setAccessibilityLabel(label)
+        button.isEnabled = context.environment.isEnabled
     }
 
     final class MenuButton: NSButton {

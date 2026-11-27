@@ -2,7 +2,6 @@ import Defaults
 import SwiftUI
 
 struct LEDSettingsView:View {
-    var onOpenChargeSettings:()->Void = {}
     @Default(.manageCharging) private var chargingManaged
     @Default(.interfaceAppearance) private var appearance
     @Default(.manageMagSafeLED) private var managed
@@ -26,13 +25,13 @@ struct LEDSettingsView:View {
                         Label(AidenteL10n.t(chargingManaged ? "电池管理需要修复":"需要启用电池管理",chargingManaged ? "Battery Management Needs Repair":"Battery Management Required"),systemImage:"info.circle")
                         Text(AidenteL10n.t("尚未启用。可以先选择模式；启用成功后会应用当前选择，取消不会开启。","Not enabled. Preview modes first; successful setup applies your selection. Cancel leaves control off.")).font(.caption).foregroundStyle(.secondary)
                         Button(AidenteL10n.t(chargingManaged ? "修复并继续":"启用并继续",chargingManaged ? "Repair and Continue":"Enable and Continue")) { enableAndApply() }
-                            .buttonStyle(.borderedProminent).disabled(setup.enabling || helper.isBusy || applying)
+                            .buttonStyle(.borderedProminent).disabled(setup.enabling || helper.isBusy || applying || AidenteRuntime.isUIPreview)
                     }
                 }
                 AidenteSettingToggle("由 Aidente 管理指示灯",subtitle:"开启后可让灯光表示充电状态、一直关闭，或仅睡眠时关闭。关闭此开关会将灯光控制交还 macOS。",icon:"lightbulb",colors:[],isOn:Binding(get:{ ready && managed },set:{ value in
                     if !ready && value { enableAndApply() }
                     else if ready { managed=value;apply() }
-                })).disabled(setup.enabling || applying)
+                }), isEnabled: !setup.enabling && !applying && !AidenteRuntime.isUIPreview)
                 if ready && !managed {
                     Text(AidenteL10n.t("尚未启用指示灯管理；所选模式会在开启后应用。","LED management is off. The selected mode applies after enabling it.")).font(.caption).foregroundStyle(.secondary)
                 }
@@ -45,6 +44,10 @@ struct LEDSettingsView:View {
                     if ready { blink=value;if managed { apply() } } else { draftBlink=value }
                 })).disabled(setup.enabling || applying)
                 Text(AidenteL10n.t("不支持 MagSafe 灯光的设备或固件不会强制生效。普通模式切换不需要重复输入管理员密码。","Unsupported hardware cannot be forced to control an LED. Ordinary mode changes do not need repeated administrator passwords.")).font(.caption).foregroundStyle(.secondary)
+                if AidenteRuntime.isUIPreview {
+                    Text(AidenteL10n.t("预览仅展示指示灯选项。", "Preview shows the LED options without applying them."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
             }
         }.onAppear { helper.refreshStatus() }

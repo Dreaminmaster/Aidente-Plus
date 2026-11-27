@@ -94,6 +94,10 @@ import AidenteShared
         check(stableApps.first == "chat" && stableApps.contains("safari"), "Idle applications remain in the complete input list")
         check(AppListOrder.presentationIDs(current: stableApps, incoming: ["new"] + stableApps, interacting: true) == stableApps, "A newly running app cannot push rows under the pointer")
         check(AppListOrder.presentationIDs(current: stableApps, incoming: ["chrome"], interacting: true) == stableApps, "Removal is deferred while hovering or confirming Quit")
+        check(AppListOrder.presentationIDs(current: stableApps, incoming: ["chrome"], interacting: true,
+            scopeChanged: true) == ["chrome"], "An explicit scope change applies while the pointer stays on the list")
+        check(AppListOrder.presentationIDs(current: stableApps, incoming: [], interacting: true,
+            scopeChanged: true).isEmpty, "An explicit scope change can immediately show an empty result")
         check(AppListOrder.presentationIDs(current: stableApps, incoming: ["chrome"], interacting: false) == ["chrome"], "Leaving the list applies the updated membership")
         check(AppListOrder.presentationIDs(current: [], incoming: stableApps, interacting: true) == stableApps, "Hovering the initial placeholder cannot prevent the first list from loading")
         var appPolicy = EnergyActivityPolicy()

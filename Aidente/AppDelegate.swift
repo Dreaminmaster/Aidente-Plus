@@ -215,6 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel: viewModel,
             settingsWindowController: settingsWindowController
         )
+        settingsWindowController.onOpenMainMenu = { [weak self] in self?.statusBarManager.showMainMenu() }
         if !AidenteRuntime.isUIPreview { updateService.start() }
     }
 
@@ -390,7 +391,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hasVisibleWindows flag: Bool
     ) -> Bool {
         guard statusBarManager != nil, !CompleteUninstaller.shared.isRunning else { return false }
-        statusBarManager.showDashboardWindow()
+        statusBarManager.showMainMenu()
         return true
     }
 

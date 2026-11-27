@@ -403,6 +403,10 @@ final class ChargingHelper: NSObject, AidenteControlProtocol {
                 return
             }
             guard (0...2).contains(mode) else { reply(false, "Invalid LED policy"); return }
+            guard self.adapter.capabilities.magSafeControl else {
+                reply(!enabled, enabled ? "当前 Mac 或固件不支持 MagSafe 指示灯控制。" : nil)
+                return
+            }
             self.ledPolicyConfigured = true; self.ledEnabled = enabled; self.ledMode = mode; self.ledBlink = blink
             do { try self.applyLEDPolicy(); reply(true, nil) } catch { reply(false, error.localizedDescription) }
         }

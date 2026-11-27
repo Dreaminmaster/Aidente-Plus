@@ -94,6 +94,7 @@ struct SettingsView: View {
     @Default(.appLanguage) private var appLanguage
     @Bindable var navigation: SettingsNavigation
     var onSelection: (SettingsTab) -> Void
+    var onOpenMainMenu: () -> Void
 
     private let viewModel: MenuViewModel
     private let capabilities: DeviceCapabilities
@@ -108,7 +109,8 @@ struct SettingsView: View {
         diagnosticCenter: DiagnosticCenter,
         updateService: UpdateService,
         navigation: SettingsNavigation,
-        onSelection: @escaping (SettingsTab) -> Void
+        onSelection: @escaping (SettingsTab) -> Void,
+        onOpenMainMenu: @escaping () -> Void
     ) {
         self.viewModel = viewModel
         self.capabilities = capabilities
@@ -117,6 +119,7 @@ struct SettingsView: View {
         self.updateService = updateService
         self.navigation = navigation
         self.onSelection = onSelection
+        self.onOpenMainMenu = onOpenMainMenu
     }
 
     var body: some View {
@@ -191,9 +194,9 @@ struct SettingsView: View {
         case .overview: FullDashboardView(viewModel: viewModel)
         case .sleep: SleepSettingsView()
         case .energy: EnergySettingsView()
-        case .otherAppearance: LEDSettingsView(onOpenChargeSettings: { navigation.tab = .charging })
+        case .otherAppearance: LEDSettingsView()
         case .menuBar: MenuBarSettingsView(viewModel: viewModel)
-        case .general: GeneralSettingsView()
+        case .general: GeneralSettingsView(onOpenMainMenu: onOpenMainMenu)
         case .dashboard: DashboardSettingsView()
         case .charging: ChargingSettingsView(capabilities: capabilities, chargeManager: chargeManager)
         case .automation: AutomationSettingsView()

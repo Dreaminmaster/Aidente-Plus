@@ -4,6 +4,10 @@ import SwiftUI
 import UserNotifications
 
 struct GeneralSettingsView: View {
+    let onOpenMainMenu: () -> Void
+    @State private var notificationStatus: UNAuthorizationStatus?
+    @State private var requestingNotifications = false
+    @State private var notificationError: String?
     @Default(.appLanguage) var appLanguage
     @Default(.launchAtLogin) var launchAtLogin
     @Default(.showDockIcon) private var showDockIcon
@@ -105,11 +109,7 @@ struct GeneralSettingsView: View {
                     colors: AidenteTheme.dashboardColors
                 )
 
-                Button {
-                    if let url = URL(string: "aidente://dashboard") {
-                        NSWorkspace.shared.open(url)
-                    }
-                } label: {
+                Button(action: onOpenMainMenu) {
                     Label(AidenteL10n.t("打开主菜单"), systemImage: "macwindow")
                 }
                 .buttonStyle(AidenteActionButtonStyle(colors: AidenteTheme.dashboardColors))
@@ -138,21 +138,54 @@ struct GeneralSettingsView: View {
                     subtitle: AidenteL10n.t("仅控制暂停、恢复充电的提醒；不影响任务通知。", "Notify when charging pauses or resumes; workflow notifications are separate."),
                     icon: "bolt.badge.clock.fill",
                     colors: AidenteTheme.automationColors,
-                    isOn: $showChargingStatusChangedNotification
+                    isOn: $showChargingStatusChangedNotification,
+                    isEnabled: !disableNotifications
                 )
-                    .disabled(disableNotifications)
-                    .opacity(disableNotifications ? 0.48 : 1)
                     .padding(.leading, 18)
-                Button(AidenteL10n.t("请求系统通知授权…","Request Notification Permission…")) {
-                    guard !AidenteRuntime.isUIPreview else { return }
-                    UNUserNotificationCenter.current().requestAuthorization(options:[.alert,.sound]) { _,_ in }
-                }.buttonStyle(.link)
-                Text(AidenteL10n.t("通知还需在 macOS 系统设置中允许 Aidente；此处开关不会更改系统权限。", "macOS must also allow Aidente notifications. These switches do not change system permission."))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if AidenteRuntime.isUIPreview {
+                    Text(AidenteL10n.t("预览中不会请求系统通知权限。", "Preview does not request notification permission."))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if notificationStatus == .denied {
+                    Text(AidenteL10n.t("macOS 已拒绝通知权限。请在系统设置的「通知」中允许 Aidente。", "macOS has denied notification access. Allow Aidente in System Settings → Notifications."))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if notificationStatus == .notDetermined {
+                    Button(AidenteL10n.t("请求系统通知授权…", "Request Notification Permission…")) {
+                        Task { await requestNotifications() }
+                    }.buttonStyle(.link).disabled(requestingNotifications)
+                    if requestingNotifications { ProgressView().controlSize(.small) }
+                } else {
+                    Text(notificationStatus == nil
+                         ? AidenteL10n.t("正在检查 macOS 通知权限…", "Checking macOS notification permission…")
+                         : AidenteL10n.t("macOS 已允许通知。", "macOS allows notifications."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let notificationError { Text(notificationError).font(.caption).foregroundStyle(.red) }
             }
         }
         .onChange(of: launchAtLogin) { _, newValue in
             if !AidenteRuntime.isUIPreview { LaunchAtLoginService.shared.setLaunchAtLogin(newValue) }
         }
+        .task { await refreshNotificationStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshNotificationStatus() }
+        }
+    }
+
+    private func refreshNotificationStatus() async {
+        guard !AidenteRuntime.isUIPreview else { return }
+        notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
+    private func requestNotifications() async {
+        guard !requestingNotifications else { return }
+        requestingNotifications = true
+        notificationError = nil
+        defer { requestingNotifications = false }
+        do {
+            _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        } catch {
+            notificationError = error.localizedDescription
+        }
+        await refreshNotificationStatus()
     }
 }
