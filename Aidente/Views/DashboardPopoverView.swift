@@ -73,6 +73,9 @@ struct DashboardPopoverView: View {
     @State private var typedLimit = ""
     @FocusState private var limitFieldIsFocused: Bool
     @State private var dragged: String?
+    @State private var showingOptions = false
+    @State private var showingAppearanceOptions = false
+    @FocusState private var optionsFocused: Bool
     private let editor = PopoverEditorState.shared
     private var canControl: Bool { viewModel.manageChargingEnabled && !AidenteRuntime.isUIPreview && !viewModel.systemCalibrationActive }
     private var canEditLimit: Bool {
@@ -82,129 +85,18 @@ struct DashboardPopoverView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    Button {
-                        typedLimit = String(viewModel.effectiveChargeLimit)
-                        enteringLimit = true
-                    } label: {
-                        Text(AidenteL10n.t("上限：", "Limit: ") + "\(editingLimit ? Int(draft.rounded()) : viewModel.effectiveChargeLimit)%")
-                            .fontWeight(.semibold).monospacedDigit()
-                    }.popover(isPresented: $enteringLimit) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(below80 ? "20–100%" : "80–100%").font(.caption).foregroundStyle(.secondary)
-                            HStack {
-                                TextField(AidenteL10n.t("充电上限", "Charge Limit"), text: $typedLimit)
-                                    .focused($limitFieldIsFocused)
-                                    .frame(width: 58).onSubmit { commitTypedLimit() }
-                                Text("%")
-                                Button(AidenteL10n.t("取消", "Cancel")) { enteringLimit = false }
-                                    .keyboardShortcut(.cancelAction)
-                                Button(AidenteL10n.t("好", "OK")) { commitTypedLimit() }
-                                    .keyboardShortcut(.defaultAction).disabled(typedTarget == nil)
-                            }
-                        }.padding(12)
-                            .onAppear { limitFieldIsFocused = true }
-                    }.disabled(!canEditLimit).help(AidenteL10n.t("输入目标百分比", "Enter a target percentage"))
-                    Spacer(minLength: 0)
-                    Button { viewModel.toggleForceDischarge() } label: {
-                        HStack(spacing: 16) {
-                            Text(AidenteL10n.t(viewModel.dischargeRequested ? "停止" : "放电", viewModel.dischargeRequested ? "Stop" : "Discharge"))
-                            Image(systemName: viewModel.dischargeRequested ? "stop.circle" : "minus.circle").font(.system(size: 16))
-                        }
-                    }.disabled(!canControl || (!viewModel.dischargeRequested && (!viewModel.adapterConnected || viewModel.displayPercentage <= limit)))
-                        .help(!viewModel.adapterConnected && !viewModel.dischargeRequested
-                              ? AidenteL10n.t("接通电源后可主动放电至设定上限。", "Connect power to discharge to the charge limit.")
-                              : AidenteL10n.t(automaticDischarge
-                            ? "自动放电已开启。停止会同时关闭自动放电，避免立即重新开始。"
-                            : "将电池放电至设定的充电上限；放电期间点击停止。",
-                            automaticDischarge
-                            ? "Automatic discharge is on. Stop also turns it off to prevent an immediate restart."
-                            : "Discharge to the charge limit; click Stop to end it."))
-                    Button { viewModel.toggleChargeLimitOverride() } label: {
-                        HStack(spacing: 12) {
-                            Text(AidenteL10n.t(viewModel.chargeLimitOverrideActive ? "停止" : "充满", viewModel.chargeLimitOverrideActive ? "Stop" : "Top Up"))
-                            Image(systemName: "plus.circle").font(.system(size: 16))
-                        }
-                    }.disabled(!canControl || (!viewModel.chargeLimitOverrideActive && (!viewModel.adapterConnected || viewModel.effectiveChargeLimit == 100)))
-                        .help(!viewModel.adapterConnected && !viewModel.chargeLimitOverrideActive
-                              ? AidenteL10n.t("接通电源后可临时充满。", "Connect power to top up.")
-                              : AidenteL10n.t("充至 100%，保持至拔掉电源。", "Charge to 100% and hold until unplugged."))
-                    Button { onOpenSettings(.overview) } label: {
-                        Image(systemName: "square.grid.2x2").font(.system(size: 16))
-                    }.accessibilityLabel(AidenteL10n.t("打开设置", "Open Settings"))
-                }.buttonStyle(PopoverHeaderButtonStyle())
-                PopoverChargeSlider(value: $draft, percentage: viewModel.displayPercentage,
-                    showPercentage: showPercentage, adapterConnected: viewModel.adapterConnected, chargingMode: viewModel.chargingMode, motion: viewModel.trackMotion, sailing: viewModel.sailingActive,
-                    minimum: below80 ? 20 : 80,
-                    sailingLower: sailing && !viewModel.calibrationActive && !viewModel.chargeLimitOverrideActive ? max(20, (editingLimit ? Int(draft.rounded()) : limit) - sailingRange) : nil,
-                    enabled: canEditLimit,
-                    onEditing: { editing in
-                        editingLimit = editing
-                        if !editing { limit = min(100, max(below80 ? 20 : 80, Int(draft.rounded()))); draft = Double(limit) }
-                    })
-
-            }.padding(16)
-            if editor.isEditing {
-                HStack {
-                    Text(AidenteL10n.t("编辑小组件", "Edit Widgets")).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        editor.isAddingWidget.toggle()
-                    } label: {
-                        Label(AidenteL10n.t("添加", "Add"), systemImage: editor.isAddingWidget ? "chevron.up" : "plus")
-                    }.accessibilityLabel(AidenteL10n.t("添加小组件", "Add Widgets"))
-                    Button(AidenteL10n.t("完成", "Done")) { editor.isEditing = false }
-                }.padding(.horizontal, 16).padding(.bottom, 12)
+            VStack(spacing: 0) {
+                dashboardHeader
+                dashboardWidgets
             }
-            if editor.isEditing && editor.isAddingWidget {
-                PopoverWidgetPicker(ids: $widgetIDs, isPresented: Binding(
-                    get: { editor.isAddingWidget }, set: { editor.isAddingWidget = $0 }
-                ))
-                .padding(.horizontal, 16).padding(.bottom, 12)
-            }
-            if editor.isEditing && widgetIDs.isEmpty {
-                Text(AidenteL10n.t("从“添加”中选择小组件，拖动可调整顺序。", "Choose widgets from Add, then drag to reorder them."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.bottom, 12)
-            }
-            if !PopoverLayout.visibleWidgets(widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive).isEmpty {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(PopoverLayout.visibleWidgets(widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive)) { widget in
-                            VStack(alignment: .leading, spacing: 8) {
-                                if editor.isEditing && widgetIDs.contains(widget.id) {
-                                    HStack {
-                                        Text(widget.title).font(.caption)
-                                        Spacer()
-                                        Button { move(widget, -1) } label: { Image(systemName: "chevron.up") }.disabled(widgetIDs.first == widget.id)
-                                        Button { move(widget, 1) } label: { Image(systemName: "chevron.down") }.disabled(widgetIDs.last == widget.id)
-                                        Button { widgetIDs.removeAll { $0 == widget.id } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }.accessibilityLabel(AidenteL10n.t("移除", "Remove") + " " + widget.title)
-                                    }.buttonStyle(.borderless)
-                                }
-                                if editor.isEditing && widget == .specifications {
-                                    DisclosureGroup(AidenteL10n.t("选择显示的规格", "Choose Specification Rows")) {
-                                        ForEach(MenuBarMetric.allCases.filter { !["calibration", "sailing", "heatProtection", "topUp"].contains($0.id) }) { metric in
-                                            Toggle(metric.title, isOn: Binding(get: { specIDs.contains(metric.id) }, set: { chosen in
-                                                if chosen { if !specIDs.contains(metric.id) { specIDs.append(metric.id) } }
-                                                else { specIDs.removeAll { $0 == metric.id } }
-                                            })).toggleStyle(.checkbox)
-                                        }
-                                    }
-                                }
-                                if editor.isEditing && widget == .energyMode {
-                                    Toggle(AidenteL10n.t("紧凑模式（仅启用功耗模式时显示）", "Compact (only visible while a power mode is active)"), isOn: $compactEnergyWidget)
-                                        .toggleStyle(.checkbox)
-                                }
-                                widgetView(widget)
-                            }.padding(12).background {
-                                if widget != .powerFlow { AidenteReliefSurface(cornerRadius: 15) }
-                            }
-                                .modifier(WidgetEditingDrag(enabled: editor.isEditing, widget: widget, ids: $widgetIDs, dragged: $dragged))
-                        }
-                    }.padding(.horizontal, 12).padding(.bottom, 12)
-                }.scrollIndicators(.automatic)
+            .overlay(alignment: .bottomTrailing) {
+                if showingOptions {
+                    ZStack(alignment: .bottomTrailing) {
+                        Color.clear.contentShape(Rectangle()).onTapGesture(perform: dismissOptions)
+                            .accessibilityHidden(true)
+                        optionsMenu.padding(.trailing, 12).padding(.bottom, 4)
+                    }
+                }
             }
             Divider()
             HStack(spacing: 12) {
@@ -219,8 +111,17 @@ struct DashboardPopoverView: View {
                     Label(AidenteL10n.t(editor.isEditing ? "完成" : "自定义", editor.isEditing ? "Done" : "Customize"),
                           systemImage: editor.isEditing ? "checkmark" : "slider.horizontal.3")
                 }.accessibilityLabel(AidenteL10n.t("自定义弹出窗口", "Customize Popover"))
-                DashboardMenuButton(symbol: "ellipsis.circle", label: AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"), populate: populateOptionsMenu)
-                    .frame(width: 24, height: 24)
+                Button {
+                    if showingOptions { dismissOptions() }
+                    else { showingOptions = true }
+                } label: {
+                    Image(systemName: "ellipsis.circle").font(.system(size: 14))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                        .background(.tint.opacity(showingOptions ? 0.14 : 0), in: RoundedRectangle(cornerRadius: 5))
+                }
+                .accessibilityLabel(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"))
+                .help(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"))
             }.buttonStyle(.borderless).font(.system(size: 11))
                 .padding(.horizontal, 16).frame(height: 41)
         }
@@ -254,29 +155,216 @@ struct DashboardPopoverView: View {
             Button(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
         }
     }
-    private func populateOptionsMenu(_ menu: NSMenu, _ target: DashboardMenuButton.Coordinator) {
-        let heading = NSMenuItem(title: AidenteL10n.t("小组件", "Widgets"), action: nil, keyEquivalent: "")
-        menu.addItem(heading)
-        for widget in PopoverWidget.allCases {
-            menu.addItem(target.item(widget.title, checked: widgetIDs.contains(widget.id)) {
-                if widgetIDs.contains(widget.id) { widgetIDs.removeAll { $0 == widget.id } }
-                else { widgetIDs.append(widget.id) }
-            })
+    private var dashboardHeader: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                Button {
+                    typedLimit = String(viewModel.effectiveChargeLimit)
+                    enteringLimit = true
+                } label: {
+                    Text(AidenteL10n.t("上限：", "Limit: ") + "\(editingLimit ? Int(draft.rounded()) : viewModel.effectiveChargeLimit)%")
+                        .fontWeight(.semibold).monospacedDigit()
+                }.popover(isPresented: $enteringLimit) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(below80 ? "20–100%" : "80–100%").font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            TextField(AidenteL10n.t("充电上限", "Charge Limit"), text: $typedLimit)
+                                .focused($limitFieldIsFocused)
+                                .frame(width: 58).onSubmit { commitTypedLimit() }
+                            Text("%")
+                            Button(AidenteL10n.t("取消", "Cancel")) { enteringLimit = false }
+                                .keyboardShortcut(.cancelAction)
+                            Button(AidenteL10n.t("好", "OK")) { commitTypedLimit() }
+                                .keyboardShortcut(.defaultAction).disabled(typedTarget == nil)
+                        }
+                    }.padding(12)
+                        .onAppear { limitFieldIsFocused = true }
+                }.disabled(!canEditLimit).help(AidenteL10n.t("输入目标百分比", "Enter a target percentage"))
+                Spacer(minLength: 0)
+                Button { viewModel.toggleForceDischarge() } label: {
+                    HStack(spacing: 16) {
+                        Text(AidenteL10n.t(viewModel.dischargeRequested ? "停止" : "放电", viewModel.dischargeRequested ? "Stop" : "Discharge"))
+                        Image(systemName: viewModel.dischargeRequested ? "stop.circle" : "minus.circle").font(.system(size: 16))
+                    }
+                }.disabled(!canControl || (!viewModel.dischargeRequested && (!viewModel.adapterConnected || viewModel.displayPercentage <= limit)))
+                    .help(!viewModel.adapterConnected && !viewModel.dischargeRequested
+                          ? AidenteL10n.t("接通电源后可主动放电至设定上限。", "Connect power to discharge to the charge limit.")
+                          : AidenteL10n.t(automaticDischarge
+                        ? "自动放电已开启。停止会同时关闭自动放电，避免立即重新开始。"
+                        : "将电池放电至设定的充电上限；放电期间点击停止。",
+                        automaticDischarge
+                        ? "Automatic discharge is on. Stop also turns it off to prevent an immediate restart."
+                        : "Discharge to the charge limit; click Stop to end it."))
+                Button { viewModel.toggleChargeLimitOverride() } label: {
+                    HStack(spacing: 12) {
+                        Text(AidenteL10n.t(viewModel.chargeLimitOverrideActive ? "停止" : "充满", viewModel.chargeLimitOverrideActive ? "Stop" : "Top Up"))
+                        Image(systemName: "plus.circle").font(.system(size: 16))
+                    }
+                }.disabled(!canControl || (!viewModel.chargeLimitOverrideActive && (!viewModel.adapterConnected || viewModel.effectiveChargeLimit == 100)))
+                    .help(!viewModel.adapterConnected && !viewModel.chargeLimitOverrideActive
+                          ? AidenteL10n.t("接通电源后可临时充满。", "Connect power to top up.")
+                          : AidenteL10n.t("充至 100%，保持至拔掉电源。", "Charge to 100% and hold until unplugged."))
+                Button { onOpenSettings(.overview) } label: {
+                    Image(systemName: "square.grid.2x2").font(.system(size: 16))
+                }.accessibilityLabel(AidenteL10n.t("打开设置", "Open Settings"))
+            }.buttonStyle(PopoverHeaderButtonStyle())
+            PopoverChargeSlider(value: $draft, percentage: viewModel.displayPercentage,
+                showPercentage: showPercentage, adapterConnected: viewModel.adapterConnected, chargingMode: viewModel.chargingMode, motion: viewModel.trackMotion, sailing: viewModel.sailingActive,
+                minimum: below80 ? 20 : 80,
+                sailingLower: sailing && !viewModel.calibrationActive && !viewModel.chargeLimitOverrideActive ? max(20, (editingLimit ? Int(draft.rounded()) : limit) - sailingRange) : nil,
+                enabled: canEditLimit,
+                onEditing: { editing in
+                    editingLimit = editing
+                    if !editing { limit = min(100, max(below80 ? 20 : 80, Int(draft.rounded()))); draft = Double(limit) }
+                })
+
+        }.padding(16)
+    }
+
+    @ViewBuilder private var dashboardWidgets: some View {
+        if editor.isEditing {
+            HStack {
+                Text(AidenteL10n.t("编辑小组件", "Edit Widgets")).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    editor.isAddingWidget.toggle()
+                } label: {
+                    Label(AidenteL10n.t("添加", "Add"), systemImage: editor.isAddingWidget ? "chevron.up" : "plus")
+                }.accessibilityLabel(AidenteL10n.t("添加小组件", "Add Widgets"))
+                Button(AidenteL10n.t("完成", "Done")) { editor.isEditing = false }
+            }.padding(.horizontal, 16).padding(.bottom, 12)
         }
-        menu.addItem(.separator())
-        let appearanceItem = NSMenuItem(title: AidenteL10n.t("界面外观", "Appearance"), action: nil, keyEquivalent: "")
-        let appearances = NSMenu()
-        for style in InterfaceAppearance.allCases {
-            appearances.addItem(target.item(style.title, checked: appearance == style) { appearance = style })
+        if editor.isEditing && editor.isAddingWidget {
+            PopoverWidgetPicker(ids: $widgetIDs, isPresented: Binding(
+                get: { editor.isAddingWidget }, set: { editor.isAddingWidget = $0 }
+            ))
+            .padding(.horizontal, 16).padding(.bottom, 12)
         }
-        appearanceItem.submenu = appearances
-        menu.addItem(appearanceItem)
-        menu.addItem(target.item(AidenteL10n.t("在 Dock 中显示", "Show in Dock"), checked: showDockIcon) { showDockIcon.toggle() })
-        menu.addItem(target.item(AidenteL10n.t("弹出窗口设置…", "Popover Settings…")) { onOpenSettings(.dashboard) })
-        menu.addItem(target.item(AidenteL10n.t("菜单栏样式…", "Menu Bar Appearance…")) { onOpenSettings(.menuBar) })
-        menu.addItem(target.item(AidenteL10n.t("充电器指示灯…", "Charger LED…")) { onOpenSettings(.otherAppearance) })
-        menu.addItem(.separator())
-        menu.addItem(target.item(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit))
+        if editor.isEditing && widgetIDs.isEmpty {
+            Text(AidenteL10n.t("从“添加”中选择小组件，拖动可调整顺序。", "Choose widgets from Add, then drag to reorder them."))
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.bottom, 12)
+        }
+        if !PopoverLayout.visibleWidgets(widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive).isEmpty {
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(PopoverLayout.visibleWidgets(widgetIDs, editing: editor.isEditing, calibrating: viewModel.calibrationActive)) { widget in
+                        VStack(alignment: .leading, spacing: 8) {
+                            if editor.isEditing && widgetIDs.contains(widget.id) {
+                                HStack {
+                                    Text(widget.title).font(.caption)
+                                    Spacer()
+                                    Button { move(widget, -1) } label: { Image(systemName: "chevron.up") }.disabled(widgetIDs.first == widget.id)
+                                    Button { move(widget, 1) } label: { Image(systemName: "chevron.down") }.disabled(widgetIDs.last == widget.id)
+                                    Button { widgetIDs.removeAll { $0 == widget.id } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }.accessibilityLabel(AidenteL10n.t("移除", "Remove") + " " + widget.title)
+                                }.buttonStyle(.borderless)
+                            }
+                            if editor.isEditing && widget == .specifications {
+                                DisclosureGroup(AidenteL10n.t("选择显示的规格", "Choose Specification Rows")) {
+                                    ForEach(MenuBarMetric.allCases.filter { !["calibration", "sailing", "heatProtection", "topUp"].contains($0.id) }) { metric in
+                                        Toggle(metric.title, isOn: Binding(get: { specIDs.contains(metric.id) }, set: { chosen in
+                                            if chosen { if !specIDs.contains(metric.id) { specIDs.append(metric.id) } }
+                                            else { specIDs.removeAll { $0 == metric.id } }
+                                        })).toggleStyle(.checkbox)
+                                    }
+                                }
+                            }
+                            if editor.isEditing && widget == .energyMode {
+                                Toggle(AidenteL10n.t("紧凑模式（仅启用功耗模式时显示）", "Compact (only visible while a power mode is active)"), isOn: $compactEnergyWidget)
+                                    .toggleStyle(.checkbox)
+                            }
+                            widgetView(widget)
+                        }.padding(12).background {
+                            if widget != .powerFlow { AidenteReliefSurface(cornerRadius: 15) }
+                        }
+                            .modifier(WidgetEditingDrag(enabled: editor.isEditing, widget: widget, ids: $widgetIDs, dragged: $dragged))
+                    }
+                }.padding(.horizontal, 12).padding(.bottom, 12)
+            }.scrollIndicators(.automatic)
+        }
+    }
+
+    private var optionsMenu: some View {
+        // Keep these choices in the same nonactivating window as the button.
+        // A separate AppKit tracking window can lose pointer input to the frontmost app.
+        ViewThatFits(in: .vertical) {
+            optionsRows
+            ScrollView { optionsRows }.frame(maxHeight: .infinity)
+        }
+        .frame(width: 214)
+        .padding(4)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.12)) }
+        .shadow(color: .black.opacity(0.26), radius: 9, y: 3)
+        .focusable()
+        .focusEffectDisabled()
+        .focused($optionsFocused)
+        .onAppear { optionsFocused = true }
+        .onExitCommand(perform: dismissOptions)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(AidenteL10n.t("小组件与外观选项", "Widgets and Appearance"))
+    }
+
+    private var optionsRows: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(AidenteL10n.t("小组件", "Widgets"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 22)
+                .padding(.vertical, 4)
+            ForEach(PopoverWidget.allCases, id: \.id) { widget in
+                optionsRow(widget.title, checked: widgetIDs.contains(widget.id)) {
+                    if widgetIDs.contains(widget.id) { widgetIDs.removeAll { $0 == widget.id } }
+                    else { widgetIDs.append(widget.id) }
+                }
+            }
+            Divider().padding(.vertical, 3)
+            optionsRow(AidenteL10n.t("界面外观", "Appearance"),
+                       trailingIcon: showingAppearanceOptions ? "chevron.down" : "chevron.right", closesMenu: false) {
+                showingAppearanceOptions.toggle()
+            }
+            if showingAppearanceOptions {
+                ForEach(InterfaceAppearance.allCases) { style in
+                    optionsRow(style.title, checked: appearance == style) { appearance = style }
+                        .padding(.leading, 12)
+                }
+            }
+            optionsRow(AidenteL10n.t("在 Dock 中显示", "Show in Dock"), checked: showDockIcon) { showDockIcon.toggle() }
+            optionsRow(AidenteL10n.t("弹出窗口设置…", "Popover Settings…")) { onOpenSettings(.dashboard) }
+            optionsRow(AidenteL10n.t("菜单栏样式…", "Menu Bar Appearance…")) { onOpenSettings(.menuBar) }
+            optionsRow(AidenteL10n.t("充电器指示灯…", "Charger LED…")) { onOpenSettings(.otherAppearance) }
+            Divider().padding(.vertical, 3)
+            optionsRow(AidenteL10n.t("退出 Aidente", "Quit Aidente"), action: onQuit)
+        }
+    }
+
+    private func optionsRow(_ title: String, checked: Bool = false, trailingIcon: String? = nil,
+                            closesMenu: Bool = true, action: @escaping () -> Void) -> some View {
+        Button {
+            if closesMenu { dismissOptions() }
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .opacity(checked ? 1 : 0)
+                    .accessibilityHidden(true)
+                Text(title)
+                Spacer(minLength: 8)
+                if let trailingIcon { Image(systemName: trailingIcon).font(.system(size: 9)) }
+            }
+            .padding(.horizontal, 6)
+            .frame(minHeight: 23)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(DashboardOptionRowStyle())
+        .accessibilityAddTraits(checked ? .isSelected : [])
+    }
+
+    private func dismissOptions() {
+        showingAppearanceOptions = false
+        showingOptions = false
     }
 
     private func commitTypedLimit() {
@@ -582,6 +670,19 @@ private struct WidgetEditingDrag: ViewModifier {
             content.onDrag { dragged = widget.id; return NSItemProvider(object: widget.id as NSString) }
                 .onDrop(of: [.text], delegate: WidgetReorderDelegate(target: widget.id, ids: $ids, dragged: $dragged))
         } else { content }
+    }
+}
+
+private struct DashboardOptionRowStyle: ButtonStyle {
+    @State private var hovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13))
+            .foregroundStyle(.primary)
+            .background(.tint.opacity(configuration.isPressed ? 0.22 : hovered ? 0.13 : 0),
+                        in: RoundedRectangle(cornerRadius: 4))
+            .onHover { hovered = $0 }
     }
 }
 
