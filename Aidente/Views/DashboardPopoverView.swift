@@ -14,7 +14,7 @@ import AidenteShared
     var updateSize: (() -> Void)?
     func beginEditing() { isEditing = true; requestOpen?() }
 
-    func track(_ menu: NSMenu, at point: NSPoint, in anchor: NSView) {
+    func track(_ menu: NSMenu, at screenPoint: NSPoint) {
         guard trackedMenu == nil else { return }
         let started = ProcessInfo.processInfo.systemUptime
         trackedMenu = menu
@@ -22,7 +22,7 @@ import AidenteShared
             lastMenuTrackingInterval = started...ProcessInfo.processInfo.systemUptime
             trackedMenu = nil
         }
-        menu.popUp(positioning: nil, at: point, in: anchor)
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
     }
 
     func consumeMenuEscape(_ event: NSEvent?) -> Bool {
@@ -654,8 +654,17 @@ private struct DashboardMenuButton: NSViewRepresentable {
         }
 
         @objc func open(_ button: NSButton) {
+            // Start native menu tracking after AppKit finishes the button's mouse-up.
+            DispatchQueue.main.async { [weak self, weak button] in
+                guard let self, let button else { return }
+                self.presentMenu(from: button)
+            }
+        }
+
+        private func presentMenu(from button: NSButton) {
             let editor = PopoverEditorState.shared
-            guard !editor.isTrackingNativeMenu, let window = button.window else { return }
+            guard !editor.isTrackingNativeMenu, button.isEnabled,
+                  let window = button.window, window.isVisible, window.isOnActiveSpace else { return }
             let menu = NSMenu()
             populate(menu, self)
             let anchor = window.convertToScreen(button.convert(button.bounds, to: nil))
@@ -667,7 +676,9 @@ private struct DashboardMenuButton: NSViewRepresentable {
                 x: max(screen.minX + 6, anchor.maxX - menu.size.width),
                 y: opensAbove ? min(screen.maxY - 3, upperY) : anchor.minY - 3
             )
-            editor.track(menu, at: button.convert(window.convertPoint(fromScreen: screenPoint), from: nil), in: button)
+            // Position from the button, without tying menu tracking to the
+            // inactive app that owns a nonactivating status panel.
+            editor.track(menu, at: screenPoint)
         }
     }
 }

@@ -259,7 +259,8 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.level = .popUpMenu
+        // Native menus must stack above the panel even when another app is active.
+        panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications]
         panel.delegate = self
         panel.onEscape = { [weak self] in self?.dismissMenu() }
@@ -279,7 +280,8 @@ final class StatusBarManager: NSObject, NSWindowDelegate {
             guard MainActor.assumeIsolated({ !PopoverEditorState.shared.isTrackingNativeMenu }) else { return }
             let point = NSEvent.mouseLocation
             Task { @MainActor in
-                guard let self, let panel, self.popoverPanel === panel else { return }
+                guard let self, let panel, self.popoverPanel === panel,
+                      !PopoverEditorState.shared.isTrackingNativeMenu else { return }
                 // Status-item mouseDown must be left to its mouseUp toggle.
                 guard !panel.frame.contains(point), !self.isPointerOverStatusItem(at: point) else { return }
                 self.dismissMenu()
